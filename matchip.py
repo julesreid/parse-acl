@@ -50,6 +50,9 @@ def contains(subnet1, subnet2):
 def is_contained_in(subnet1, subnet2):
     return match_subnet(subnet1, subnet2, subnet2[1], 32)
 
+def matches_exact(subnet1, subnet2):
+    return match_subnet(subnet1, subnet2, subnet2[1], subnet2[1])
+
 if __name__ == '__main__':
     import sys
     assert len(sys.argv) == 5
@@ -60,3 +63,4 @@ if __name__ == '__main__':
     print match_subnet(iptosubnet(ipaddr1), iptosubnet(ipaddr2), minlen, maxlen)
     print contains(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
     print is_contained_in(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
+    print matches_exact(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
