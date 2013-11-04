@@ -41,10 +41,7 @@ def match_subnet(subnet1, subnet2, minlen, maxlen):
 
     len1 = subnet1[1]
     len2 = subnet2[1]
-    if len1 <= len2:
-        containment = subnet_test(subnet1[0], subnet2[0], len1)
-    else:
-        containment = subnet_test(subnet2[0], subnet1[0], len2)
+    containment = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
     return containment and minlen <= len1 <= maxlen
 
 def contains(subnet1, subnet2):
