@@ -2,14 +2,23 @@ import socket
 import struct
 
 def maskof(prefixlen):
+    assert isinstance(prefixlen, int), type(prefixlen)
     allones = (1 << 32) - 1
-    return int((allones << (32 - prefixlen)) & allones)
+    r = int((allones << (32 - prefixlen)) & allones)
+    assert isinstance(r, int), type(r)
+    return r
 
 def iptoint(ip):
-    return struct.unpack("!I", socket.inet_aton(ip))[0]
+    assert isinstance(ip, str), type(ip)
+    r = struct.unpack("!I", socket.inet_aton(ip))[0]
+    assert isinstance(r, int), type(r)
+    return r
 
 def inttoip(int_):
-    return socket.inet_ntoa(struct.pack("!I", int_))
+    assert isinstance(int_, int), type(int_)
+    r = socket.inet_ntoa(struct.pack("!I", int_))
+    assert isinstance(r, str), type(r)
+    return r
 
 def iptosubnet(ip):
     assert isinstance(ip, str), type(ip)
@@ -27,7 +36,9 @@ def subnettoip(subnet):
     assert len(subnet) == 2, len(subnet)
     assert isinstance(subnet[0], int), type(subnet[0])
     assert isinstance(subnet[1], int), type(subnet[1])
-    return inttoip(subnet[0]) + '/' + str(subnet[1])
+    r = inttoip(subnet[0]) + '/' + str(subnet[1])
+    assert isinstance(r, str), type(r)
+    return r
 
 def match_subnet(subnet1, subnet2, minlen, maxlen):
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
