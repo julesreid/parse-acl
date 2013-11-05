@@ -12,7 +12,7 @@ def inttoip(int_):
     return socket.inet_ntoa(struct.pack("!I", int_))
 
 def iptosubnet(ip):
-    assert isinstance(ip, str)
+    assert isinstance(ip, str), type(ip)
     try:
         i = ip.index('/')
         mask = int(ip[i + 1:])
@@ -24,9 +24,9 @@ def iptosubnet(ip):
 
 def subnettoip(subnet):
     assert isinstance(subnet, tuple) or isinstance(subnet, list)
-    assert len(subnet) == 2
-    assert isinstance(subnet[0], int)
-    assert isinstance(subnet[1], int)
+    assert len(subnet) == 2, len(subnet)
+    assert isinstance(subnet[0], int), type(subnet[0])
+    assert isinstance(subnet[1], int), type(subnet[1])
     return inttoip(subnet[0]) + '/' + str(subnet[1])
 
 def match_subnet(subnet1, subnet2, minlen, maxlen):
