@@ -59,27 +59,17 @@ def matches_exact(subnet1, subnet2):
 if __name__ == '__main__':
     import sys
     assert len(sys.argv) == 5
-    ipaddr1 = sys.argv[1]
-    ipaddr2 = sys.argv[2]
+    ipaddr1 = iptosubnet(sys.argv[1])
+    ipaddr2 = iptosubnet(sys.argv[2])
     minlen = int(sys.argv[3])
     maxlen = int(sys.argv[4])
 
-    results = (("match_subnet",
-                match_subnet(iptosubnet(ipaddr1),
-                             iptosubnet(ipaddr2),
-                             minlen,
-                             maxlen)),
-               ("containment",
-                containment(iptosubnet(ipaddr1),
-                            iptosubnet(ipaddr2))),
-               ("contains",
-                contains(iptosubnet(ipaddr1),
-                         iptosubnet(ipaddr2))),
-               ("is_contained_in",
-                is_contained_in(iptosubnet(ipaddr1),
-                                iptosubnet(ipaddr2))),
-               ( "matches_exact",
-                 matches_exact(iptosubnet(ipaddr1),
-                               iptosubnet(ipaddr2))))
+    print "ipaddr1 =", subnettoip(ipaddr1)
+    print "ipaddr2 =", subnettoip(ipaddr2)
+    results = (("match_subnet", match_subnet(ipaddr1, ipaddr2, minlen, maxlen)),
+               ("containment", containment(ipaddr1, ipaddr2)),
+               ("contains", contains(ipaddr1, ipaddr2)),
+               ("is_contained_in", is_contained_in(ipaddr1, ipaddr2)),
+               ("matches_exact", matches_exact(ipaddr1, ipaddr2)))
     for name, result in results:
         print "%-22s  %s" % (name, result)
