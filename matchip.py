@@ -44,6 +44,9 @@ def match_subnet(subnet1, subnet2, minlen, maxlen):
     containment = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
     return containment and minlen <= len1 <= maxlen
 
+def containment(subnet1, subnet2):
+    return match_subnet(subnet1, subnet2, 0, 32)
+
 def contains(subnet1, subnet2):
     return match_subnet(subnet1, subnet2, 0, subnet2[1])
 
@@ -60,7 +63,23 @@ if __name__ == '__main__':
     ipaddr2 = sys.argv[2]
     minlen = int(sys.argv[3])
     maxlen = int(sys.argv[4])
-    print match_subnet(iptosubnet(ipaddr1), iptosubnet(ipaddr2), minlen, maxlen)
-    print contains(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
-    print is_contained_in(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
-    print matches_exact(iptosubnet(ipaddr1), iptosubnet(ipaddr2))
+
+    results = (("match_subnet",
+                match_subnet(iptosubnet(ipaddr1),
+                             iptosubnet(ipaddr2),
+                             minlen,
+                             maxlen)),
+               ("containment",
+                containment(iptosubnet(ipaddr1),
+                            iptosubnet(ipaddr2))),
+               ("contains",
+                contains(iptosubnet(ipaddr1),
+                         iptosubnet(ipaddr2))),
+               ("is_contained_in",
+                is_contained_in(iptosubnet(ipaddr1),
+                                iptosubnet(ipaddr2))),
+               ( "matches_exact",
+                 matches_exact(iptosubnet(ipaddr1),
+                               iptosubnet(ipaddr2))))
+    for name, result in results:
+        print "%-22s  %s" % (name, result)
