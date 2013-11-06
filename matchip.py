@@ -5,7 +5,7 @@ def maskof(prefixlen):
     assert isinstance(prefixlen, int), type(prefixlen)
     mask = 0xffffffff
     r = (mask << (32 - prefixlen)) & mask
-    # This can either be a int or long, depending on the Python version
+    # This can either be an int or a long, depending on the Python version
     assert isinstance(r, int) or isinstance(r, long), type(r)
     return r
 
