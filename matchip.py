@@ -3,7 +3,8 @@ import struct
 
 def maskof(prefixlen):
     assert isinstance(prefixlen, int), type(prefixlen)
-    r = int(-1 << (32 - prefixlen))
+    mask = 0xffffffff
+    r = int((mask << (32 - prefixlen)) & mask)
     assert isinstance(r, int), type(r)
     return r
 
