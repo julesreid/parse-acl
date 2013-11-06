@@ -77,6 +77,7 @@ if __name__ == '__main__':
     ipaddr2 = iptosubnet(sys.argv[2])
     minlen = int(sys.argv[3])
     maxlen = int(sys.argv[4])
+    assert 0 <= minlen <= maxlen <= 32, (minlen, maxlen)
 
     print "ipaddr1 =", subnettoip(ipaddr1)
     print "ipaddr2 =", subnettoip(ipaddr2)
