@@ -3,14 +3,16 @@ import struct
 
 def maskof(prefixlen):
     assert isinstance(prefixlen, int), type(prefixlen)
-    allones = (1 << 32) - 1
-    r = int((allones << (32 - prefixlen)) & allones)
+    mask = 0xffffffff
+    r = int((mask << (32 - prefixlen)) & mask)
     assert isinstance(r, int), type(r)
     return r
 
 def iptoint(ip):
     assert isinstance(ip, str), type(ip)
-    r = struct.unpack("!I", socket.inet_aton(ip))[0]
+    # int() wrapper needed since defined return type of I (unsigned int) is long
+    # in Python 2.4 (but not later apparently)
+    r = int(struct.unpack("!I", socket.inet_aton(ip))[0])
     assert isinstance(r, int), type(r)
     return r
 
