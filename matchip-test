@@ -2,6 +2,8 @@
 
 PYTHON=python2.5
 
+$PYTHON -V > /dev/null 2>&1 || { echo "$PYTHON not found "; exit 1; }
+
 cat matchip-tests | grep '^[^#]' | while IFS=$'\t' read m n
 do
     result=$(
