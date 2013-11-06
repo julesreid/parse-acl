@@ -1,9 +1,11 @@
 #!/bin/sh
 
+PYTHON=python2.5
+
 cat matchip-tests | grep '^[^#]' | while IFS=$'\t' read m n
 do
     result=$(
-	python2.4 matchip.py $m | 
+	$PYTHON matchip.py $m |
 	    awk '/match_subnet/ { print $2 }' |
 	    sed -e 's/False/no/' -e 's/True/yes/'
     )

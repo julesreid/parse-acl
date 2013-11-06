@@ -4,8 +4,9 @@ import struct
 def maskof(prefixlen):
     assert isinstance(prefixlen, int), type(prefixlen)
     mask = 0xffffffff
-    r = int((mask << (32 - prefixlen)) & mask)
-    assert isinstance(r, int), type(r)
+    r = (mask << (32 - prefixlen)) & mask
+    # This can either be a int or long, depending on the Python version
+    assert isinstance(r, int) or isinstance(r, long), type(r)
     return r
 
 def iptoint(ip):
