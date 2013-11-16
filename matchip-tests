@@ -185,9 +185,9 @@
 
 # Find supernets of 10.2.0.0/16 without using contains
 # XXX incorrect -- matches 11.0.0.0/8 for instance
-0.0.0.0/0    0  4
-8.0.0.0/5    4  6
-10.0.0.0/7   7 14
-10.2.0.0/15 15 16
+#0.0.0.0/0    0  4
+#8.0.0.0/5    4  6
+#10.0.0.0/7   7 14
+#10.2.0.0/15 15 16
 
 # vi: ts=24:
