@@ -43,32 +43,32 @@ def subnettoip(subnet):
     assert isinstance(r, str), type(r)
     return r
 
-def match_subnet(subnet1, subnet2, minlen, maxlen):
-    """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
-    either a superset or subset of SUBNET2 that falls within the prefix
+def match_network(network1, network2, minlen, maxlen):
+    """Given two networks, NETWORK1 and NETWORK2, test whether NETWORK1 is
+    either a superset or subset of NETWORK2 that falls within the prefix
     length range between MINLEN and MAXLEN."""
-    def subnet_test(addr1, addr2, prefixlen):
+    def network_test(addr1, addr2, prefixlen):
         """Test two IPv4 addresses, ADDR1 and ADDR2, for equality when
         normalized to a common prefix length PREFIXLEN."""
         mask = maskof(prefixlen)
         return (addr1 & mask) == (addr2 & mask)
 
-    len1 = subnet1[1]
-    len2 = subnet2[1]
-    containment = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
+    len1 = network1[1]
+    len2 = network2[1]
+    containment = network_test(network1[0], network2[0], min(len1, len2))
     return containment and minlen <= len1 <= maxlen
 
-def containment(subnet1, subnet2):
-    return match_subnet(subnet1, subnet2, 0, 32)
+def containment(network1, network2):
+    return match_network(network1, network2, 0, 32)
 
-def contains(subnet1, subnet2):
-    return match_subnet(subnet1, subnet2, 0, subnet2[1])
+def contains(network1, network2):
+    return match_network(network1, network2, 0, network2[1])
 
-def is_contained_in(subnet1, subnet2):
-    return match_subnet(subnet1, subnet2, subnet2[1], 32)
+def is_contained_in(network1, network2):
+    return match_network(network1, network2, network2[1], 32)
 
-def matches_exact(subnet1, subnet2):
-    return match_subnet(subnet1, subnet2, subnet2[1], subnet2[1])
+def matches_exact(network1, network2):
+    return match_network(network1, network2, network2[1], network2[1])
 
 if __name__ == '__main__':
     import sys
@@ -81,7 +81,7 @@ if __name__ == '__main__':
 
     print "ipaddr1 =", subnettoip(ipaddr1)
     print "ipaddr2 =", subnettoip(ipaddr2)
-    results = (("match_subnet", match_subnet(ipaddr1, ipaddr2, minlen, maxlen)),
+    results = (("match_network", match_network(ipaddr1, ipaddr2, minlen, maxlen)),
                ("containment", containment(ipaddr1, ipaddr2)),
                ("contains", contains(ipaddr1, ipaddr2)),
                ("is_contained_in", is_contained_in(ipaddr1, ipaddr2)),

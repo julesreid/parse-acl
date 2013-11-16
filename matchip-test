@@ -8,7 +8,7 @@ cat matchip-tests | grep '^[^#]' | while IFS=$'\t' read m n
 do
     result=$(
 	$PYTHON matchip.py $m |
-	    awk '/match_subnet/ { print $2 }' |
+	    awk '/match_network/ { print $2 }' |
 	    sed -e 's/False/no/' -e 's/True/yes/'
     )
     if [ "$result" != "$n" ]
