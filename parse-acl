@@ -41,6 +41,8 @@ PREFIX_RE = r'''
     $
 '''
 
+DOUBLE_IP_RE = '.*?(' + IP_ADDR + ')\s+(' + IP_ADDR + ')'
+
 ### ACL matching
 
 # Match the header of a standard or extended ACL
@@ -138,14 +140,16 @@ def subnettoip(subnet):
     return inttoip(subnet[0]) + '/' + str(subnet[1])
 
 def maskof(p):
-    return -1 << (32 - p)
+    return (-1 << (32 - p)) & 0xffffffff
 
 def wildtonetmask(wild):
+    assert isinstance(wild, str)
     n = iptoint(wild)
     n = (~n) & 0xffffffff
     return n
 
 def netmasktoprefix(mask):
+    assert isinstance(mask, int)
     prefix = 32
 
     # Change netmask to a wildcard so that all of the 1s are on the right.
@@ -330,11 +334,40 @@ def main():
                 dst = iptosubnet("0.0.0.0/0")
                 #print "DEBUG: qux", subnettoip(dst)
             else:
-                #print "DEBUG: NO MATCH", line
-                last_acl_name = None
-                current_acl_name = None
-                current_acl_line = None
-                continue
+                r = re.match(DOUBLE_IP_RE, line, re.X)
+                if r:
+                    #print "DEBUG: GOT DOUBLE_IP_RE!"
+                    a1 = r.group(1)
+                    a2 = r.group(2)
+                    #print "DEBUG:", a1
+                    #print "DEBUG:", a2
+                    sn1 = iptosubnet(a1)
+                    sn2 = iptosubnet(a2)
+                    #print "DEBUG: sn1 =", sn1
+                    #print "DEBUG: sn2 =", sn2
+                    nm2 = netmasktoprefix(sn2[0])
+                    if maskof(nm2) != sn2[0]:
+                        #print "DEBUG: does not match", maskof(nm2), sn2[0]
+                        continue
+                    #print "DEBUG: nm2 =", nm2
+                    src = (0, 0)
+                    dst = (sn1[0], nm2)
+                    #print "DEBUG: dst =", dst
+                    #print "DEBUG:", subnettoip(dst)
+                else:
+                    r = re.search(SUBNET_RE, line, re.X)
+                    if r:
+                        #print "DEBUG: GOT SUBNET_RE"
+                        dst = iptosubnet(r.group(0))
+                        src = (0, 0)
+                        #print "DEBUG: dst =", dst
+                        #print "DEBUG:", subnettoip(dst)
+                    else:
+                        #print "DEBUG: NO MATCH", line
+                        last_acl_name = None
+                        current_acl_name = None
+                        current_acl_line = None
+                        continue
 
         if match_subnet(src, src_match, src_min, src_max) and \
            match_subnet(dst, dst_match, dst_min, dst_max):
