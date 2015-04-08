@@ -41,12 +41,36 @@ PREFIX_RE = r'''
     $
 '''
 
-DOUBLE_IP_RE = '.*?(' + IP_ADDR + ')\s+(' + IP_ADDR + ')'
+NETWORK_OBJECT_RE = r'''
+    \b
+    network-object
+    [ ]
+'''
+
+NETWORK_OBJECT_HOST_RE = r'''
+    ^
+    [ ]*
+    (?:
+    ''' + NETWORK_OBJECT_RE + '''
+    )?
+    host
+    [ ]
+    (''' + IP_ADDR + r''')
+'''
+
+NETWORK_OBJECT_NETWORK_RE = r'''
+    ^
+    [ ]*
+    ''' + NETWORK_OBJECT_RE + '''
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+'''
 
 ### ACL matching
 
 # Match the header of a standard or extended ACL
-ACL_HEADER = r'^ip\ access-list\ (?:standard|extended)\ (\S+)'
+ACL_HEADER = r'^(?:ip\ access-list\ (?:standard|extended)|object(?:-group)\ network)\ (\S+)'
 
 ## Standard numbered
 
@@ -108,6 +132,32 @@ EXTENDED_ACL_RE = r'''
     )?
     \s+
     (any|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' + IP_ADDR + r'''))
+    (?:\s+eq\s+(\S+))?
+'''
+
+## Extended ASA (NOTE: not a wildcard mask)
+
+# access-list Internal_nat0_outbound extended permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
+
+EXTENDED_ASA_ACL_RE = r'''
+    access-list
+    [ ]
+    \S+
+    [ ]
+    extended
+    [ ]
+    (permit|deny)
+    [ ]
+    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
+    [ ]
+    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' + IP_ADDR + r'''))
+    (?:
+        \s+ eq \s+ (\S+)
+    |
+        \s+ range \s+ \S+ \s+ \S+
+    )?
+    \s+
+    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' + IP_ADDR + r'''))
     (?:\s+eq\s+(\S+))?
 '''
 
@@ -197,15 +247,18 @@ def matches_exact(subnet1, subnet2):
 
 # XXX redefine to make more sense (e.g., "host" only is used in extended
 # acls but not in standard acls)
-def range_to_net(re_range, re_host, re_net, re_mask):
+def range_to_net(re_range, re_host, re_net, re_mask, usewild=True):
     if re_range.startswith('host '):
         net = iptoint(re_host)
         mask = 32
-    elif re_range == "any":
+    elif re_range == "any" or re_range == "any4":
         net, mask = iptosubnet("0.0.0.0/0")
     else:
         net = iptoint(re_net)
-        mask = netmasktoprefix(wildtonetmask(re_mask))
+        if usewild:
+            mask = netmasktoprefix(wildtonetmask(re_mask))
+        else:
+            mask = netmasktoprefix(iptoint(re_mask))
     return (net, mask)
 
 # GE: undefined LE: undefined   ge=LEN, le=LEN
@@ -309,17 +362,25 @@ def main():
             continue
         r = re.match(EXTENDED_ACL_RE, line, re.X)
         if r:
+            wildcard = True
+        else:
+            r = re.match(EXTENDED_ASA_ACL_RE, line, re.X)
+            wildcard = False
+        if r:
             # XXX needs to work when both -s and -d specified (logical or)
             # XXX needs error checking
             # XXX $7 and $12 are source or destination ports (if any)
-            #print "DEBUG: EXTENDED_ACL_RE", line
-            src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6))
-            #print "DEBUG: foo", subnettoip(src)
+            #print "DEBUG: EXTENDED_ACL_RE, line =", line
+            #print "DEBUG: wildcard =", wildcard
+            src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6),
+                    usewild=wildcard)
+            #print "DEBUG: src =", subnettoip(src)
             dst_range = r.group(8)
             if dst_range is None:
                 dst_range = "any"
-            dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11))
-            #print "DEBUG: bar", subnettoip(dst)
+            dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11),
+                    usewild=wildcard)
+            #print "DEBUG: dst =", subnettoip(dst)
         else:
             r = re.match(STANDARD_ACL_RE, line, re.X)
             if r:
@@ -334,40 +395,45 @@ def main():
                 dst = iptosubnet("0.0.0.0/0")
                 #print "DEBUG: qux", subnettoip(dst)
             else:
-                r = re.match(DOUBLE_IP_RE, line, re.X)
+                r = re.match(NETWORK_OBJECT_HOST_RE, line, re.X)
                 if r:
-                    #print "DEBUG: GOT DOUBLE_IP_RE!"
-                    a1 = r.group(1)
-                    a2 = r.group(2)
-                    #print "DEBUG:", a1
-                    #print "DEBUG:", a2
-                    sn1 = iptosubnet(a1)
-                    sn2 = iptosubnet(a2)
-                    #print "DEBUG: sn1 =", sn1
-                    #print "DEBUG: sn2 =", sn2
-                    nm2 = netmasktoprefix(sn2[0])
-                    if maskof(nm2) != sn2[0]:
-                        #print "DEBUG: does not match", maskof(nm2), sn2[0]
-                        continue
-                    #print "DEBUG: nm2 =", nm2
-                    src = (0, 0)
-                    dst = (sn1[0], nm2)
-                    #print "DEBUG: dst =", dst
-                    #print "DEBUG:", subnettoip(dst)
+                    #print "DEBUG: got NETWORK_OBJECT_HOST_RE"
+                    src = iptosubnet(r.group(1))
+                    dst = iptosubnet("0.0.0.0/0")
+                    #print "DEBUG: src =", subnettoip(src)
                 else:
-                    r = re.search(SUBNET_RE, line, re.X)
+                    r = re.match(NETWORK_OBJECT_NETWORK_RE, line, re.X)
                     if r:
-                        #print "DEBUG: GOT SUBNET_RE"
-                        dst = iptosubnet(r.group(0))
-                        src = (0, 0)
-                        #print "DEBUG: dst =", dst
-                        #print "DEBUG:", subnettoip(dst)
+                        #print "DEBUG: NETWORK_OBJECT_NETWORK_RE, line =", line
+                        a1 = r.group(1)
+                        a2 = r.group(2)
+                        #print "DEBUG: a1 =", a1
+                        #print "DEBUG: a2 =", a2
+                        sn1 = iptosubnet(a1)
+                        sn2 = iptosubnet(a2)
+                        #print "DEBUG: sn1 =", sn1
+                        #print "DEBUG: sn2 =", sn2
+                        nm2 = netmasktoprefix(sn2[0])
+                        if maskof(nm2) != sn2[0]:
+                            print "DEBUG: does not match", maskof(nm2), sn2[0]
+                            continue
+                        #print "DEBUG: nm2 =", nm2
+                        src = (sn1[0], nm2)
+                        dst = iptosubnet("0.0.0.0/0")
+                        #print "DEBUG: src =", subnettoip(src)
                     else:
-                        #print "DEBUG: NO MATCH", line
-                        last_acl_name = None
-                        current_acl_name = None
-                        current_acl_line = None
-                        continue
+                        r = re.search(SUBNET_RE, line, re.X)
+                        if r:
+                            #print "DEBUG: GOT SUBNET_RE, line =", line
+                            src = iptosubnet(r.group(0))
+                            dst = iptosubnet("0.0.0.0/0")
+                            #print "DEBUG: src =", subnettoip(src)
+                        else:
+                            #print "DEBUG: NO MATCH", line
+                            last_acl_name = None
+                            current_acl_name = None
+                            current_acl_line = None
+                            continue
 
         if match_subnet(src, src_match, src_min, src_max) and \
            match_subnet(dst, dst_match, dst_min, dst_max):
