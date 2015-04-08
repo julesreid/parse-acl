@@ -14,6 +14,9 @@
 #     object-group protocol
 #     object-group service
 #     access-list
+# * Match more than the first IP address on a line (only the first IP
+#   address on a line is tested -- all others are ignored).
+# * Match ranges (correctly accounting for overlaps, either in whole or part)
 
 import sys
 import re
