@@ -70,7 +70,7 @@ NETWORK_OBJECT_NETWORK_RE = r'''
 ### ACL matching
 
 # Match the header of a standard or extended ACL
-ACL_HEADER = r'^(?:ip\ access-list\ (?:standard|extended)|object(?:-group)\ network)\ (\S+)'
+ACL_HEADER = r'^(?:ip\ access-list\ (?:standard|extended)|object(?:-group)?\ network)\ (\S+)'
 
 ## Standard numbered
 
@@ -161,7 +161,7 @@ EXTENDED_ASA_ACL_RE = r'''
     (?:\s+eq\s+(\S+))?
 '''
 
-EXTENDED_IGNORE_RE = r'(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ .*'
+EXTENDED_IGNORE_RE = r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ |\ description\b)'
 
 ### IP address utility functions
 
