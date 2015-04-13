@@ -164,7 +164,7 @@ EXTENDED_ASA_ACL_RE = r'''
     (?:\s+eq\s+(\S+))?
 '''
 
-EXTENDED_IGNORE_RE = r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ |\ description\b)'
+EXTENDED_IGNORE_RE = r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ |\s+description\ |\s+port-object\ |\s+group-object)'
 
 ### IP address utility functions
 
