@@ -431,7 +431,7 @@ def main():
                         #print "DEBUG: sn2 =", sn2
                         nm2 = netmasktoprefix(sn2[0])
                         if maskof(nm2) != sn2[0]:
-                            print "DEBUG: does not match", maskof(nm2), sn2[0]
+                            #print "DEBUG: does not match", maskof(nm2), sn2[0]
                             continue
                         #print "DEBUG: nm2 =", nm2
                         src = (sn1[0], nm2)
