@@ -356,8 +356,8 @@ def main():
         src_match, src_min, src_max, dst_match, dst_min, dst_max = \
             dst_match, dst_min, dst_max, src_match, src_min, src_max
 
-    #print "DEBUG: src: %s ge %d le %d" % (subnettoip(src_match), src_min, src_max)
-    #print "DEBUG: dst: %s ge %d le %d" % (subnettoip(dst_match), dst_min, dst_max)
+    logging.debug("src: %s ge %d le %d" % (subnettoip(src_match), src_min, src_max))
+    logging.debug("dst: %s ge %d le %d" % (subnettoip(dst_match), dst_min, dst_max))
 
     last_acl_name = None
     current_acl_name = None
@@ -367,12 +367,12 @@ def main():
         line = line.replace('\n', '')
         line_num += 1
         if re.match(ACL_HEADER, line, re.X):
-            #print "DEBUG: ACL_HEADER", line
+            logging.debug("ACL_HEADER = %r", line)
             current_acl_name = line
             current_acl_line = line_num
             continue
         if re.match(EXTENDED_IGNORE_RE, line, re.X):
-            #print "DEBUG: EXTENDED_IGNORE_RE", line
+            logging.debug("EXTENDED_IGNORE_RE = %r", line)
             continue
         r = re.match(EXTENDED_ACL_RE, line, re.X)
         if r:
@@ -384,73 +384,76 @@ def main():
             # XXX needs to work when both -s and -d specified (logical or)
             # XXX needs error checking
             # XXX $7 and $12 are source or destination ports (if any)
-            #print "DEBUG: EXTENDED_ACL_RE, line =", line
-            #print "DEBUG: wildcard =", wildcard
+            logging.debug("EXTENDED_ACL_RE, line = %r", line)
+            logging.debug("wildcard = %r", wildcard)
             src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6),
                     usewild=wildcard)
-            #print "DEBUG: src =", subnettoip(src)
+            logging.debug("src = %r", subnettoip(src))
             dst_range = r.group(8)
             if dst_range is None:
                 dst_range = "any"
             dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11),
                     usewild=wildcard)
-            #print "DEBUG: dst =", subnettoip(dst)
+            logging.debug("dst = %r", subnettoip(dst))
         else:
             r = re.match(STANDARD_ACL_RE, line, re.X)
             if r:
-                #print "DEBUG: STANDARD_ACL_RE", line
+                logging.debug("STANDARD_ACL_RE = %r", line)
                 # XXX ugly code
                 if r.group(4) is None:
                     src = range_to_net(r.group(2), None, r.group(3), "0.0.0.0")
-                    #print "DEBUG: biz", subnettoip(src)
+                    logging.debug("biz = %r", subnettoip(src))
                 else:
                     src = range_to_net(r.group(2), None, r.group(3), r.group(4))
-                    #print "DEBUG: baz", subnettoip(src)
+                    logging.debug("baz = %r", subnettoip(src))
                 dst = iptosubnet("0.0.0.0/0")
-                #print "DEBUG: qux", subnettoip(dst)
+                logging.debug("qux = %r", subnettoip(dst))
             else:
                 r = re.match(NETWORK_OBJECT_HOST_RE, line, re.X)
                 if r:
-                    #print "DEBUG: got NETWORK_OBJECT_HOST_RE"
+                    logging.debug("got NETWORK_OBJECT_HOST_RE")
                     src = iptosubnet(r.group(1))
                     dst = iptosubnet("0.0.0.0/0")
-                    #print "DEBUG: src =", subnettoip(src)
+                    logging.debug("src = %r", subnettoip(src))
                 else:
                     r = re.match(NETWORK_OBJECT_NETWORK_RE, line, re.X)
                     if r:
-                        #print "DEBUG: NETWORK_OBJECT_NETWORK_RE, line =", line
+                        logging.debug("NETWORK_OBJECT_NETWORK_RE, line = %r",
+                                      line)
                         pass
                     else:
                         r = re.search(SUBNET_WITH_MASK_RE, line, re.X)
                         if r:
                             pass
-                            #print "DEBUG: SUBNET_WITH_MASK_RE, line =", line
+                            logging.debug("SUBNET_WITH_MASK_RE, line = %r",
+                                          line)
                     if r:
                         a1 = r.group(1)
                         a2 = r.group(2)
-                        #print "DEBUG: a1 =", a1
-                        #print "DEBUG: a2 =", a2
+                        logging.debug("a1 = %s", a1)
+                        logging.debug("a2 = %s", a2)
                         sn1 = iptosubnet(a1)
                         sn2 = iptosubnet(a2)
-                        #print "DEBUG: sn1 =", sn1
-                        #print "DEBUG: sn2 =", sn2
+                        logging.debug("sn1 = %r", sn1)
+                        logging.debug("sn2 = %r", sn2)
                         nm2 = netmasktoprefix(sn2[0])
                         if maskof(nm2) != sn2[0]:
-                            #print "DEBUG: does not match", maskof(nm2), sn2[0]
+                            logging.debug("does not match: %d and %d",
+                                          maskof(nm2), sn2[0])
                             continue
-                        #print "DEBUG: nm2 =", nm2
+                        logging.debug("nm2 = %r", nm2)
                         src = (sn1[0], nm2)
                         dst = iptosubnet("0.0.0.0/0")
-                        #print "DEBUG: src =", subnettoip(src)
+                        logging.debug("src = %s", subnettoip(src))
                     else:
                         r = re.search(SUBNET_RE, line, re.X)
                         if r:
-                            #print "DEBUG: GOT SUBNET_RE, line =", line
+                            logging.debug("GOT SUBNET_RE, line = %r", line)
                             src = iptosubnet(r.group(0))
                             dst = iptosubnet("0.0.0.0/0")
-                            #print "DEBUG: src =", subnettoip(src)
+                            logging.debug("src = %r", subnettoip(src))
                         else:
-                            #print "DEBUG: NO MATCH", line
+                            logging.debug("NO MATCH = %r", line)
                             last_acl_name = None
                             current_acl_name = None
                             current_acl_line = None
