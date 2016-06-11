@@ -313,18 +313,15 @@ def normalized(subnet):
 ### Main program
 
 def main():
-    # Set up logging
-    logging.basicConfig(level=logging.DEBUG,
-                        format="%(levelname)s:%(funcName)s:%(lineno)d:%(message)s")
-
     # Match anything by default
     src_match =   dst_match  = iptosubnet("0.0.0.0/0")
     src_min   =   dst_min    = 0
     src_max   =   dst_max    = 32
     reverse = False
+    log_level = logging.INFO
 
     try:
-        opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:x')
+        opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:xv')
     except getopt.GetoptError, err:
         print "%s: %s" % (sys.argv[0], err)
         sys.exit(1)
@@ -342,6 +339,13 @@ def main():
                 print "warning: dst ip not normalized (%s)" % subnettoip(dst_match)
         elif opt == '-x':
             reverse = True
+        elif opt == '-v':
+            log_level = logging.DEBUG
+
+    # Set up logging
+    logging.basicConfig(level=log_level,
+                        format="%(levelname)s:%(funcName)s:%(lineno)d:%(message)s")
+
 
     # Assert that 0 <= ge <= le <= 32
     # XXX convert asserts to raise SyntaxError
