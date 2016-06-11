@@ -23,6 +23,7 @@ import re
 import socket
 import struct
 import getopt
+import logging
 
 ### IP address, subnet and prefix list matching
 
@@ -312,6 +313,10 @@ def normalized(subnet):
 ### Main program
 
 def main():
+    # Set up logging
+    logging.basicConfig(level=logging.DEBUG,
+                        format="%(levelname)s:%(funcName)s:%(lineno)d:%(message)s")
+
     # Match anything by default
     src_match =   dst_match  = iptosubnet("0.0.0.0/0")
     src_min   =   dst_min    = 0
