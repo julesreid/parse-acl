@@ -271,10 +271,15 @@ def range_to_net(re_range, re_host, re_net, re_mask, usewild=True):
             mask = netmasktoprefix(iptoint(re_mask))
     return (net, mask)
 
-# GE: undefined LE: undefined   ge=LEN, le=LEN
-# GE: undefined LE: defined     ge=LEN, le=LE
-# GE: defined   LE: defined     ge=GE,  le=LE
-# GE: defined   LE: undefined   ge=GE,  le=32
+# LEN: undefined GE: undefined LE: undefined   ge=32,  le=32
+# LEN: undefined GE: undefined LE: defined     ge=32,  le=LE
+# LEN: undefined GE: defined   LE: defined     ge=GE,  le=LE
+# LEN: undefined GE: defined   LE: undefined   ge=GE,  le=32
+
+# LEN: defined   GE: defined   LE: undefined   ge=GE,  le=32
+# LEN: defined   GE: defined   LE: defined     ge=GE,  le=LE
+# LEN: defined   GE: undefined LE: defined     ge=LEN, le=LE
+# LEN: defined   GE: undefined LE: undefined   ge=LEN, le=LEN
 def normalize_prefix_lengths(ip, len, ge, le):
     if len is None:
         len = 32
