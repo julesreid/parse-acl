@@ -77,6 +77,23 @@ NETWORK_OBJECT_NETWORK_RE = r'''
     (''' + IP_ADDR + r''')
 '''
 
+ROUTE_RE = r'''
+    ^
+    [ ]*
+    route
+    [ ]
+    \S+
+    [ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    \S+
+    $
+'''
+
 ### ACL matching
 
 # Match the header of a standard or extended ACL
@@ -383,6 +400,15 @@ def main():
         if re.match(EXTENDED_IGNORE_RE, line, re.X):
             logging.debug("EXTENDED_IGNORE_RE = %r", line)
             continue
+        r = re.match(ROUTE_RE, line, re.X)
+        if r:
+            src = r.group(1)
+            msk = r.group(2)
+            dst = r.group(3)
+            #src = iptosubnet(src)
+            logging.debug("route %r %r %r", src, msk, dst)
+            #continue
+
         r = re.match(EXTENDED_ACL_RE, line, re.X)
         if r:
             wildcard = True
