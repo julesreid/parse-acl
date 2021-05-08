@@ -24,6 +24,11 @@ import socket
 import struct
 import getopt
 import logging
+from typing import Any, Tuple, Optional
+
+# Set some types used for holding data
+Prefix = Tuple[int, int]                # IP address/subnet, prefix length
+PrefixRange = Tuple[Prefix, int, int]   # Prefix, ge, le
 
 ### IP address, subnet and prefix list matching
 
@@ -192,14 +197,14 @@ EXTENDED_IGNORE_RE = r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ |\
 
 ### IP address utility functions
 
-def iptoint(ip):
-    return struct.unpack("!I", socket.inet_aton(ip))[0]
+def iptoint(ip: str) -> int:
+    result: int = struct.unpack("!I", socket.inet_aton(ip))[0]
+    return result
 
-def inttoip(int_):
+def inttoip(int_: int) -> str:
     return socket.inet_ntoa(struct.pack("!I", int_))
 
-def iptosubnet(ip):
-    assert isinstance(ip, str)
+def iptosubnet(ip: str) -> Prefix:
     try:
         i = ip.index('/')
         mask = int(ip[i + 1:])
@@ -209,24 +214,18 @@ def iptosubnet(ip):
     ipaddr_bin = iptoint(ip)
     return (ipaddr_bin, mask)
 
-def subnettoip(subnet):
-    assert isinstance(subnet, tuple) or isinstance(subnet, list)
-    assert len(subnet) == 2
-    assert isinstance(subnet[0], int)
-    assert isinstance(subnet[1], int)
+def subnettoip(subnet: Prefix) -> str:
     return inttoip(subnet[0]) + '/' + str(subnet[1])
 
-def maskof(p):
+def maskof(p: int) -> int:
     return (-1 << (32 - p)) & 0xffffffff
 
-def wildtonetmask(wild):
-    assert isinstance(wild, str)
+def wildtonetmask(wild: str) -> int:
     n = iptoint(wild)
     n = (~n) & 0xffffffff
     return n
 
-def netmasktoprefix(mask):
-    assert isinstance(mask, int)
+def netmasktoprefix(mask: int) -> int:
     prefix = 32
 
     # Change netmask to a wildcard so that all of the 1s are on the right.
@@ -239,11 +238,11 @@ def netmasktoprefix(mask):
 
 ### IP subnet matching
 
-def match_subnet(subnet1, subnet2, minlen, maxlen):
+def match_subnet(subnet1: Prefix, subnet2: Prefix, minlen: int, maxlen: int) -> bool:
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
     either a superset or subset of SUBNET2 that falls within the prefix
     length range between MINLEN and MAXLEN."""
-    def subnet_test(addr1, addr2, prefixlen):
+    def subnet_test(addr1: int, addr2: int, prefixlen: int) -> bool:
         """Test two IPv4 addresses, ADDR1 and ADDR2, for equality when
         normalized to a common prefix length PREFIXLEN."""
         mask = maskof(prefixlen)
@@ -254,28 +253,29 @@ def match_subnet(subnet1, subnet2, minlen, maxlen):
     containment = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
     return containment and minlen <= len1 <= maxlen
 
-def containment(subnet1, subnet2):
+def containment(subnet1: Prefix, subnet2: Prefix) -> bool:
     return match_subnet(subnet1, subnet2, 0, 32)
 
-def contains(subnet1, subnet2):
+def contains(subnet1: Prefix, subnet2: Prefix) -> bool:
     """Test if network (a.addr,a.mask) CONTAINS (b.addr,b.mask)
 
     Caveat: Don't assume that a or b is normalised."""
     return match_subnet(subnet1, subnet2, 0, subnet2[1])
 
-def is_contained_in(subnet1, subnet2):
+def is_contained_in(subnet1: Prefix, subnet2: Prefix) -> bool:
     """Test if network SUBNET1 IS CONTAINED IN SUBNET2"""
     return match_subnet(subnet1, subnet2, subnet2[1], 32)
 
-def matches_exact(subnet1, subnet2):
+def matches_exact(subnet1: Prefix, subnet2: Prefix) -> bool:
     return match_subnet(subnet1, subnet2, subnet2[1], subnet2[1])
 
 ### Parsing
 
 # XXX redefine to make more sense (e.g., "host" only is used in extended
 # acls but not in standard acls)
-def range_to_net(re_range, re_host, re_net, re_mask, usewild=True):
+def range_to_net(re_range: str, re_host: Optional[str], re_net: str, re_mask: str, usewild: bool = True) -> Prefix:
     if re_range.startswith('host '):
+        assert re_host is not None
         net = iptoint(re_host)
         mask = 32
     elif re_range == "any" or re_range == "any4":
@@ -297,7 +297,7 @@ def range_to_net(re_range, re_host, re_net, re_mask, usewild=True):
 # LEN: defined   GE: defined   LE: defined     ge=GE,  le=LE
 # LEN: defined   GE: undefined LE: defined     ge=LEN, le=LE
 # LEN: defined   GE: undefined LE: undefined   ge=LEN, le=LEN
-def normalize_prefix_lengths(ip, len, ge, le):
+def normalize_prefix_lengths(ip: int, len: Optional[int], ge: Optional[int], le: Optional[int]) -> PrefixRange:
     if len is None:
         len = 32
     if le is None:
@@ -309,12 +309,12 @@ def normalize_prefix_lengths(ip, len, ge, le):
         ge = len
     return ((ip, len), ge, le)
 
-def safe_int(x):
+def safe_int(x: Optional[str]) -> Optional[int]:
     if x is None:
         return None
     return int(x)
 
-def parse_prefix_list(arg):
+def parse_prefix_list(arg: str) -> PrefixRange:
     r = re.match(PREFIX_RE, arg, re.X)
     if not r:
         raise SyntaxError
@@ -324,17 +324,15 @@ def parse_prefix_list(arg):
     le =  safe_int(r.group(4))
     return normalize_prefix_lengths(ip, length, ge, le)
 
-def normalized(subnet):
+def normalized(subnet: Prefix) -> bool:
     """Return True if host portion of the IP address is all zeroes."""
-    assert isinstance(subnet, tuple)
-    assert len(subnet) == 2
     ip = subnet[0]
     length = subnet[1]
     return ip & maskof(length) == ip
 
 ### Main program
 
-def main():
+def main() -> None:
     # Match anything by default
     src_match =   dst_match  = iptosubnet("0.0.0.0/0")
     src_min   =   dst_min    = 0
@@ -402,11 +400,11 @@ def main():
             continue
         r = re.match(ROUTE_RE, line, re.X)
         if r:
-            src = r.group(1)
+            srcarg = r.group(1)
             msk = r.group(2)
-            dst = r.group(3)
-            #src = iptosubnet(src)
-            logging.debug("route %r %r %r", src, msk, dst)
+            dstarg = r.group(3)
+            #srcarg = iptosubnet(srcarg)
+            logging.debug("route %r %r %r", srcarg, msk, dstarg)
             #continue
 
         r = re.match(EXTENDED_ACL_RE, line, re.X)
@@ -497,8 +495,7 @@ def main():
         if match_subnet(src, src_match, src_min, src_max) and \
            match_subnet(dst, dst_match, dst_min, dst_max):
             if current_acl_name and (last_acl_name is None or last_acl_name != current_acl_name):
-                # XXX current_acl_name and current_acl_line may be
-                # undefined
+                assert current_acl_line is not None
                 print("%5d %s" % (current_acl_line, current_acl_name))
                 last_acl_name = current_acl_name
             print("%5d %s" % (line_num, line))
