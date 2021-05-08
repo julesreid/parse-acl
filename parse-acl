@@ -212,7 +212,7 @@ def iptosubnet(ip):
 def subnettoip(subnet):
     assert isinstance(subnet, tuple) or isinstance(subnet, list)
     assert len(subnet) == 2
-    assert isinstance(subnet[0], int) or isinstance(subnet[0], long)
+    assert isinstance(subnet[0], int)
     assert isinstance(subnet[1], int)
     return inttoip(subnet[0]) + '/' + str(subnet[1])
 
@@ -344,8 +344,8 @@ def main():
 
     try:
         opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:xv')
-    except getopt.GetoptError, err:
-        print "%s: %s" % (sys.argv[0], err)
+    except getopt.GetoptError as err:
+        print("%s: %s" % (sys.argv[0], err))
         sys.exit(1)
     #print "DEBUG:", opts, parseargs
     for opt, arg in opts:
@@ -353,12 +353,12 @@ def main():
             # Handle source address
             src_match, src_min, src_max = parse_prefix_list(arg)
             if not normalized(src_match):
-                print "warning: src ip not normalized (%s)" % subnettoip(src_match)
+                print("warning: src ip not normalized (%s)" % subnettoip(src_match))
         elif opt == '-d':
             # Handle destination address
             dst_match, dst_min, dst_max = parse_prefix_list(arg)
             if not normalized(dst_match):
-                print "warning: dst ip not normalized (%s)" % subnettoip(dst_match)
+                print("warning: dst ip not normalized (%s)" % subnettoip(dst_match))
         elif opt == '-x':
             reverse = True
         elif opt == '-v':
@@ -499,9 +499,9 @@ def main():
             if current_acl_name and (last_acl_name is None or last_acl_name != current_acl_name):
                 # XXX current_acl_name and current_acl_line may be
                 # undefined
-                print "%5d %s" % (current_acl_line, current_acl_name)
+                print("%5d %s" % (current_acl_line, current_acl_name))
                 last_acl_name = current_acl_name
-            print "%5d %s" % (line_num, line)
+            print("%5d %s" % (line_num, line))
 
 if __name__ == '__main__':
     main()
