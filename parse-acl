@@ -332,6 +332,27 @@ def normalized(subnet):
     length = subnet[1]
     return ip & maskof(length) == ip
 
+def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
+                minlen_str: str, maxlen_str: str) -> None:
+    ipaddr1 = iptosubnet(ipaddr1_str)
+    ipaddr2 = iptosubnet(ipaddr2_str)
+    minlen = int(minlen_str)
+    maxlen = int(maxlen_str)
+    assert 0 <= minlen <= maxlen <= 32, (minlen, maxlen)
+
+    logging.debug("ipaddr1 = %s", subnettoip(ipaddr1))
+    logging.debug("ipaddr2 = %s", subnettoip(ipaddr2))
+    logging.debug("minlen = %d", minlen)
+    logging.debug("maxlen = %d", maxlen)
+
+    results = (("match_subnet", match_subnet(ipaddr1, ipaddr2, minlen, maxlen)),
+               ("containment", containment(ipaddr1, ipaddr2)),
+               ("contains", contains(ipaddr1, ipaddr2)),
+               ("is_contained_in", is_contained_in(ipaddr1, ipaddr2)),
+               ("matches_exact", matches_exact(ipaddr1, ipaddr2)))
+    for name, result in results:
+        print("%-22s  %s" % (name, result))
+
 ### Main program
 
 def main():
@@ -340,10 +361,11 @@ def main():
     src_min   =   dst_min    = 0
     src_max   =   dst_max    = 32
     reverse = False
+    test = False
     log_level = logging.INFO
 
     try:
-        opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:xv')
+        opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:xvt')
     except getopt.GetoptError as err:
         print("%s: %s" % (sys.argv[0], err))
         sys.exit(1)
@@ -363,11 +385,19 @@ def main():
             reverse = True
         elif opt == '-v':
             log_level = logging.DEBUG
+        elif opt == '-t':
+            test = True
 
     # Set up logging
     logging.basicConfig(level=log_level,
                         format="%(levelname)s:%(funcName)s:%(lineno)d:%(message)s")
 
+    if test:
+        if len(parseargs) != 4:
+            raise ValueError('not right number of arguments for -t')
+        testsubnets(ipaddr1_str=parseargs[0], ipaddr2_str=parseargs[1],
+                    minlen_str=parseargs[2], maxlen_str=parseargs[3])
+        sys.exit(0)
 
     # Assert that 0 <= ge <= le <= 32
     # XXX convert asserts to raise SyntaxError
