@@ -1,14 +1,14 @@
 #!/bin/sh
 
-PYTHON=python2
+PYTHON=python
 
 $PYTHON -V > /dev/null 2>&1 || { echo "$PYTHON not found "; exit 1; }
 
 cat matchip-tests | grep '^[^#]' | while IFS=$'\t' read m n
 do
     result=$(
-	$PYTHON matchip.py $m |
-	    awk '/match_network/ { print $2 }' |
+	$PYTHON parse-acl -t $m |
+	    awk '/match_subnet/ { print $2 }' |
 	    sed -e 's/False/no/' -e 's/True/yes/'
     )
     if [ "$result" != "$n" ]
