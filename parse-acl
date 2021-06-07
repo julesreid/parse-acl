@@ -24,7 +24,7 @@ import socket
 import struct
 import getopt
 import logging
-from typing import Any, Tuple, Optional
+from typing import Tuple, Optional
 
 # Set some types used for holding data
 Prefix = Tuple[int, int]                # IP address/subnet, prefix length
