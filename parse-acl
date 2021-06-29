@@ -28,7 +28,9 @@ from typing import Tuple, Optional
 
 # Set some types used for holding data
 Prefix = Tuple[int, int]                # IP address/subnet, prefix length
-PrefixRange = Tuple[Prefix, int, int]   # Prefix, ge, le
+Ge = int
+Le = int
+PrefixRange = Tuple[Prefix, Ge, Le]
 
 ### IP address, subnet and prefix list matching
 
