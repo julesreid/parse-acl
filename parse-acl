@@ -104,7 +104,8 @@ ROUTE_RE = r'''
 ### ACL matching
 
 # Match the header of a standard or extended ACL
-ACL_HEADER = r'^(?:ip\ access-list\ (?:standard|extended)|object(?:-group)?\ network)\ (\S+)'
+ACL_HEADER = (r'^(?:ip\ access-list\ (?:standard|extended)'
+              r'|object(?:-group)?\ network)\ (\S+)')
 
 ## Standard numbered
 
@@ -135,9 +136,11 @@ STANDARD_ACL_RE = r'''
 ## Extended numbered
 
 # access-list 100 remark From HL
-# access-list 100 permit ip 10.5.40.64 0.0.0.31 any time-range hlc-rate-limiting
+# access-list 100 permit ip 10.5.40.64 0.0.0.31 any
+#                 time-range hlc-rate-limiting
 # access-list 101 remark To HL
-# access-list 101 permit ip any 10.5.40.64 0.0.0.31 time-range hlc-rate-limiting
+# access-list 101 permit ip any 10.5.40.64 0.0.0.31
+#                 time-range hlc-rate-limiting
 #
 # access-list 100 permit udp host 10.15.2.8 any eq echo log
 
@@ -171,7 +174,8 @@ EXTENDED_ACL_RE = r'''
 
 ## Extended ASA (NOTE: not a wildcard mask)
 
-# access-list Internal_nat0_outbound extended permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
+# access-list Internal_nat0_outbound extended
+#             permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
 
 EXTENDED_ASA_ACL_RE = r'''
     access-list
@@ -184,18 +188,21 @@ EXTENDED_ASA_ACL_RE = r'''
     [ ]
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
     [ ]
-    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' + IP_ADDR + r'''))
+    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' \
+        + IP_ADDR + r'''))
     (?:
         \s+ eq \s+ (\S+)
     |
         \s+ range \s+ \S+ \s+ \S+
     )?
     \s+
-    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' + IP_ADDR + r'''))
+    (any4?|host\s+(''' + IP_ADDR + r')|(' + IP_ADDR + r')\s+(' \
+        + IP_ADDR + r'''))
     (?:\s+eq\s+(\S+))?
 '''
 
-EXTENDED_IGNORE_RE = r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)\ |\s+description\ |\s+port-object\ |\s+group-object)'
+EXTENDED_IGNORE_RE = (r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)'
+                      r'\ |\s+description\ |\s+port-object\ |\s+group-object)')
 
 ### IP address utility functions
 
@@ -240,7 +247,8 @@ def netmasktoprefix(mask: int) -> int:
 
 ### IP subnet matching
 
-def match_subnet(subnet1: Prefix, subnet2: Prefix, minlen: int, maxlen: int) -> bool:
+def match_subnet(subnet1: Prefix, subnet2: Prefix,
+                 minlen: int, maxlen: int) -> bool:
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
     either a superset or subset of SUBNET2 that falls within the prefix
     length range between MINLEN and MAXLEN."""
@@ -252,8 +260,8 @@ def match_subnet(subnet1: Prefix, subnet2: Prefix, minlen: int, maxlen: int) -> 
 
     len1 = subnet1[1]
     len2 = subnet2[1]
-    containment = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
-    return containment and minlen <= len1 <= maxlen
+    containmentp = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
+    return containmentp and minlen <= len1 <= maxlen
 
 def containment(subnet1: Prefix, subnet2: Prefix) -> bool:
     return match_subnet(subnet1, subnet2, 0, 32)
@@ -275,12 +283,13 @@ def matches_exact(subnet1: Prefix, subnet2: Prefix) -> bool:
 
 # XXX redefine to make more sense (e.g., "host" only is used in extended
 # acls but not in standard acls)
-def range_to_net(re_range: str, re_host: Optional[str], re_net: str, re_mask: str, usewild: bool = True) -> Prefix:
+def range_to_net(re_range: str, re_host: Optional[str],
+                 re_net: str, re_mask: str, usewild: bool = True) -> Prefix:
     if re_range.startswith('host '):
         assert re_host is not None
         net = iptoint(re_host)
         mask = 32
-    elif re_range == "any" or re_range == "any4":
+    elif re_range in ("any", "any4"):
         net, mask = iptosubnet("0.0.0.0/0")
     else:
         net = iptoint(re_net)
@@ -299,17 +308,20 @@ def range_to_net(re_range: str, re_host: Optional[str], re_net: str, re_mask: st
 # LEN: defined   GE: defined   LE: defined     ge=GE,  le=LE
 # LEN: defined   GE: undefined LE: defined     ge=LEN, le=LE
 # LEN: defined   GE: undefined LE: undefined   ge=LEN, le=LEN
-def normalize_prefix_lengths(ip: int, len: Optional[int], ge: Optional[int], le: Optional[int]) -> PrefixRange:
-    if len is None:
-        len = 32
+def normalize_prefix_lengths(ip: int,
+                             length: Optional[int],
+                             ge: Optional[int],
+                             le: Optional[int]) -> PrefixRange:
+    if length is None:
+        length = 32
     if le is None:
         if ge is None:
-            ge = le = len
+            ge = le = length
         else:
             le = 32
     elif ge is None:
-        ge = len
-    return ((ip, len), ge, le)
+        ge = length
+    return ((ip, length), ge, le)
 
 def safe_int(x: Optional[str]) -> Optional[int]:
     if x is None:
@@ -320,10 +332,10 @@ def parse_prefix_list(arg: str) -> PrefixRange:
     r = re.match(PREFIX_RE, arg, re.X)
     if not r:
         raise SyntaxError
-    ip =  iptoint(r.group(1))
+    ip = iptoint(r.group(1))
     length = safe_int(r.group(2))
-    ge =  safe_int(r.group(3))
-    le =  safe_int(r.group(4))
+    ge = safe_int(r.group(3))
+    le = safe_int(r.group(4))
     return normalize_prefix_lengths(ip, length, ge, le)
 
 def normalized(subnet: Prefix) -> bool:
@@ -345,7 +357,8 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
     logging.debug("minlen = %d", minlen)
     logging.debug("maxlen = %d", maxlen)
 
-    results = (("match_subnet", match_subnet(ipaddr1, ipaddr2, minlen, maxlen)),
+    results = (("match_subnet", match_subnet(ipaddr1, ipaddr2,
+                                             minlen, maxlen)),
                ("containment", containment(ipaddr1, ipaddr2)),
                ("contains", contains(ipaddr1, ipaddr2)),
                ("is_contained_in", is_contained_in(ipaddr1, ipaddr2)),
@@ -357,9 +370,9 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
 
 def main() -> None:
     # Match anything by default
-    src_match =   dst_match  = iptosubnet("0.0.0.0/0")
-    src_min   =   dst_min    = 0
-    src_max   =   dst_max    = 32
+    src_match = dst_match = iptosubnet("0.0.0.0/0")
+    src_min = dst_min = 0
+    src_max = dst_max = 32
     reverse = False
     test = False
     log_level = logging.INFO
@@ -375,12 +388,14 @@ def main() -> None:
             # Handle source address
             src_match, src_min, src_max = parse_prefix_list(arg)
             if not normalized(src_match):
-                print("warning: src ip not normalized (%s)" % subnettoip(src_match))
+                print("warning: src ip not normalized (%s)"
+                      % subnettoip(src_match))
         elif opt == '-d':
             # Handle destination address
             dst_match, dst_min, dst_max = parse_prefix_list(arg)
             if not normalized(dst_match):
-                print("warning: dst ip not normalized (%s)" % subnettoip(dst_match))
+                print("warning: dst ip not normalized (%s)"
+                      % subnettoip(dst_match))
         elif opt == '-x':
             reverse = True
         elif opt == '-v':
@@ -390,7 +405,8 @@ def main() -> None:
 
     # Set up logging
     logging.basicConfig(level=log_level,
-                        format="%(levelname)s:%(funcName)s:%(lineno)d:%(message)s")
+                        format="%(levelname)s:%(funcName)s:"
+                               "%(lineno)d:%(message)s")
 
     if test:
         if len(parseargs) != 4:
@@ -401,19 +417,17 @@ def main() -> None:
 
     # Assert that 0 <= ge <= le <= 32
     # XXX convert asserts to raise SyntaxError
-    assert 0 <= src_min, "Must have src  0 <= ge"
-    assert src_min <= src_max, "Must have src ge <= le"
-    assert src_max <= 32, "Must have src le <= 32"
-    assert 0 <= dst_min, "Must have dst  0 <= ge"
-    assert dst_min <= dst_max, "Must have dst ge <= le"
-    assert dst_max <= 32, "Must have dst le <= 32"
+    assert 0 <= src_min <= src_max <= 32, "Must have src 0 <= ge <= le <= 32"
+    assert 0 <= dst_min <= dst_max <= 32, "Must have dst 0 <= ge <= le <= 32"
 
     if reverse:
         src_match, src_min, src_max, dst_match, dst_min, dst_max = \
             dst_match, dst_min, dst_max, src_match, src_min, src_max
 
-    logging.debug("src: %s ge %d le %d" % (subnettoip(src_match), src_min, src_max))
-    logging.debug("dst: %s ge %d le %d" % (subnettoip(dst_match), dst_min, dst_max))
+    logging.debug("src: %s ge %d le %d",
+                  subnettoip(src_match), src_min, src_max)
+    logging.debug("dst: %s ge %d le %d",
+                  subnettoip(dst_match), dst_min, dst_max)
 
     last_acl_name = None
     current_acl_name = None
@@ -452,13 +466,13 @@ def main() -> None:
             logging.debug("EXTENDED_ACL_RE, line = %r", line)
             logging.debug("wildcard = %r", wildcard)
             src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6),
-                    usewild=wildcard)
+                               usewild=wildcard)
             logging.debug("src = %r", subnettoip(src))
             dst_range = r.group(8)
             if dst_range is None:
                 dst_range = "any"
             dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11),
-                    usewild=wildcard)
+                               usewild=wildcard)
             logging.debug("dst = %r", subnettoip(dst))
         else:
             r = re.match(STANDARD_ACL_RE, line, re.X)
@@ -469,7 +483,8 @@ def main() -> None:
                     src = range_to_net(r.group(2), None, r.group(3), "0.0.0.0")
                     logging.debug("biz = %r", subnettoip(src))
                 else:
-                    src = range_to_net(r.group(2), None, r.group(3), r.group(4))
+                    src = range_to_net(r.group(2), None,
+                                       r.group(3), r.group(4))
                     logging.debug("baz = %r", subnettoip(src))
                 dst = iptosubnet("0.0.0.0/0")
                 logging.debug("qux = %r", subnettoip(dst))
@@ -485,11 +500,9 @@ def main() -> None:
                     if r:
                         logging.debug("NETWORK_OBJECT_NETWORK_RE, line = %r",
                                       line)
-                        pass
                     else:
                         r = re.search(SUBNET_WITH_MASK_RE, line, re.X)
                         if r:
-                            pass
                             logging.debug("SUBNET_WITH_MASK_RE, line = %r",
                                           line)
                     if r:
@@ -526,7 +539,8 @@ def main() -> None:
 
         if match_subnet(src, src_match, src_min, src_max) and \
            match_subnet(dst, dst_match, dst_min, dst_max):
-            if current_acl_name and (last_acl_name is None or last_acl_name != current_acl_name):
+            if current_acl_name and (last_acl_name is None
+                                     or last_acl_name != current_acl_name):
                 assert current_acl_line is not None
                 print("%5d %s" % (current_acl_line, current_acl_name))
                 last_acl_name = current_acl_name
