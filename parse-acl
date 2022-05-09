@@ -31,12 +31,17 @@ class Prefix(NamedTuple):
     subnet: int
     prefix: int = 32
     def __repr__(self) -> str:
-        return '<Prefix ' + subnettoip(self) + '>'
+        return 'Prefix(' + subnettoip(self) + ')'
+
+class PrefixRange(NamedTuple):
+    """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
+    prefix: Prefix
+    ge: int
+    le: int
 
 # Set some types used for holding data
 Ge = int
 Le = int
-PrefixRange = Tuple[Prefix, Ge, Le]
 
 ### IP address, subnet and prefix list matching
 
@@ -285,6 +290,9 @@ def is_contained_in(subnet1: Prefix, subnet2: Prefix) -> bool:
 def matches_exact(subnet1: Prefix, subnet2: Prefix) -> bool:
     return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
 
+def match_subnet_prefixrange(subnet: Prefix, prefix: PrefixRange) -> bool:
+    return match_subnet(subnet, prefix.prefix, prefix.ge, prefix.le)
+
 ### Parsing
 
 # XXX redefine to make more sense (e.g., "host" only is used in extended
@@ -327,7 +335,11 @@ def normalize_prefix_lengths(ip: int,
             le = 32
     elif ge is None:
         ge = length
-    return (Prefix(subnet=ip, prefix=length), ge, le)
+    if not 0 <= length <= 32:
+        raise SyntaxError('must have 0 <= length <= 32')
+    if not 0 <= ge <= le <= 32:
+        raise SyntaxError('must have 0 <= ge <= le <= 32')
+    return PrefixRange(Prefix(subnet=ip, prefix=length), ge, le)
 
 def safe_int(x: Optional[str]) -> Optional[int]:
     if x is None:
@@ -337,7 +349,7 @@ def safe_int(x: Optional[str]) -> Optional[int]:
 def parse_prefix_list(arg: str) -> PrefixRange:
     r = re.match(PREFIX_RE, arg, re.X)
     if not r:
-        raise SyntaxError
+        raise SyntaxError('invalid prefix range')
     ip = iptoint(r.group(1))
     length = safe_int(r.group(2))
     ge = safe_int(r.group(3))
@@ -376,9 +388,7 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
 
 def main() -> None:
     # Match anything by default
-    src_match = dst_match = iptosubnet("0.0.0.0/0")
-    src_min = dst_min = 0
-    src_max = dst_max = 32
+    srcip = dstip = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
     reverse = False
     test = False
     log_level = logging.INFO
@@ -392,16 +402,16 @@ def main() -> None:
     for opt, arg in opts:
         if opt == '-s':
             # Handle source address
-            src_match, src_min, src_max = parse_prefix_list(arg)
-            if not normalized(src_match):
+            srcip = parse_prefix_list(arg)
+            if not normalized(srcip.prefix):
                 print("warning: src ip not normalized (%s)"
-                      % subnettoip(src_match))
+                      % subnettoip(srcip.prefix))
         elif opt == '-d':
             # Handle destination address
-            dst_match, dst_min, dst_max = parse_prefix_list(arg)
-            if not normalized(dst_match):
+            dstip = parse_prefix_list(arg)
+            if not normalized(dstip.prefix):
                 print("warning: dst ip not normalized (%s)"
-                      % subnettoip(dst_match))
+                      % subnettoip(dstip.prefix))
         elif opt == '-x':
             reverse = True
         elif opt == '-v':
@@ -421,17 +431,11 @@ def main() -> None:
                     minlen_str=parseargs[2], maxlen_str=parseargs[3])
         sys.exit(0)
 
-    # Assert that 0 <= ge <= le <= 32
-    # XXX convert asserts to raise SyntaxError
-    assert 0 <= src_min <= src_max <= 32, "Must have src 0 <= ge <= le <= 32"
-    assert 0 <= dst_min <= dst_max <= 32, "Must have dst 0 <= ge <= le <= 32"
-
     if reverse:
-        src_match, src_min, src_max, dst_match, dst_min, dst_max = \
-            dst_match, dst_min, dst_max, src_match, src_min, src_max
+        srcip, dstip = dstip, srcip
 
-    logging.debug("src: %r ge %d le %d", src_match, src_min, src_max)
-    logging.debug("dst: %r ge %d le %d", dst_match, dst_min, dst_max)
+    logging.debug("src: %r", srcip)
+    logging.debug("dst: %r", dstip)
 
     last_acl_name = None
     current_acl_name = None
@@ -541,8 +545,8 @@ def main() -> None:
                             current_acl_line = None
                             continue
 
-        if match_subnet(src, src_match, src_min, src_max) and \
-           match_subnet(dst, dst_match, dst_min, dst_max):
+        if (match_subnet_prefixrange(src, srcip) and
+                match_subnet_prefixrange(dst, dstip)):
             if current_acl_name and (last_acl_name is None
                                      or last_acl_name != current_acl_name):
                 assert current_acl_line is not None
