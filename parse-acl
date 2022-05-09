@@ -26,16 +26,16 @@ import getopt
 import logging
 from typing import Tuple, Optional, NamedTuple
 
-class Prefix(NamedTuple):
+class Subnet(NamedTuple):
     """Represent an IP address or subnet, with prefix length"""
-    subnet: int
+    ip: int
     prefix: int = 32
     def __repr__(self) -> str:
-        return 'Prefix(' + subnettoip(self) + ')'
+        return 'Subnet(' + subnettoip(self) + ')'
 
 class PrefixRange(NamedTuple):
     """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
-    prefix: Prefix
+    prefix: Subnet
     ge: int
     le: int
 
@@ -224,7 +224,7 @@ def iptoint(ip: str) -> int:
 def inttoip(int_: int) -> str:
     return socket.inet_ntoa(struct.pack("!I", int_))
 
-def iptosubnet(ip: str) -> Prefix:
+def iptosubnet(ip: str) -> Subnet:
     try:
         i = ip.index('/')
         mask = int(ip[i + 1:])
@@ -232,10 +232,10 @@ def iptosubnet(ip: str) -> Prefix:
     except ValueError:
         mask = 32
     ipaddr_bin = iptoint(ip)
-    return Prefix(subnet=ipaddr_bin, prefix=mask)
+    return Subnet(ip=ipaddr_bin, prefix=mask)
 
-def subnettoip(subnet: Prefix) -> str:
-    return inttoip(subnet.subnet) + '/' + str(subnet.prefix)
+def subnettoip(subnet: Subnet) -> str:
+    return inttoip(subnet.ip) + '/' + str(subnet.prefix)
 
 def maskof(p: int) -> int:
     return (-1 << (32 - p)) & 0xffffffff
@@ -258,7 +258,7 @@ def netmasktoprefix(mask: int) -> int:
 
 ### IP subnet matching
 
-def match_subnet(subnet1: Prefix, subnet2: Prefix,
+def match_subnet(subnet1: Subnet, subnet2: Subnet,
                  minlen: int, maxlen: int) -> bool:
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
     either a superset or subset of SUBNET2 that falls within the prefix
@@ -271,26 +271,26 @@ def match_subnet(subnet1: Prefix, subnet2: Prefix,
 
     len1 = subnet1.prefix
     len2 = subnet2.prefix
-    containmentp = subnet_test(subnet1.subnet, subnet2.subnet, min(len1, len2))
+    containmentp = subnet_test(subnet1.ip, subnet2.ip, min(len1, len2))
     return containmentp and minlen <= len1 <= maxlen
 
-def containment(subnet1: Prefix, subnet2: Prefix) -> bool:
+def containment(subnet1: Subnet, subnet2: Subnet) -> bool:
     return match_subnet(subnet1, subnet2, 0, 32)
 
-def contains(subnet1: Prefix, subnet2: Prefix) -> bool:
+def contains(subnet1: Subnet, subnet2: Subnet) -> bool:
     """Test if network (a.addr,a.mask) CONTAINS (b.addr,b.mask)
 
     Caveat: Don't assume that a or b is normalised."""
     return match_subnet(subnet1, subnet2, 0, subnet2.prefix)
 
-def is_contained_in(subnet1: Prefix, subnet2: Prefix) -> bool:
+def is_contained_in(subnet1: Subnet, subnet2: Subnet) -> bool:
     """Test if network SUBNET1 IS CONTAINED IN SUBNET2"""
     return match_subnet(subnet1, subnet2, subnet2.prefix, 32)
 
-def matches_exact(subnet1: Prefix, subnet2: Prefix) -> bool:
+def matches_exact(subnet1: Subnet, subnet2: Subnet) -> bool:
     return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
 
-def match_subnet_prefixrange(subnet: Prefix, prefix: PrefixRange) -> bool:
+def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
     return match_subnet(subnet, prefix.prefix, prefix.ge, prefix.le)
 
 ### Parsing
@@ -298,7 +298,7 @@ def match_subnet_prefixrange(subnet: Prefix, prefix: PrefixRange) -> bool:
 # XXX redefine to make more sense (e.g., "host" only is used in extended
 # acls but not in standard acls)
 def range_to_net(re_range: str, re_host: Optional[str],
-                 re_net: str, re_mask: str, usewild: bool = True) -> Prefix:
+                 re_net: str, re_mask: str, usewild: bool = True) -> Subnet:
     if re_range.startswith('host '):
         assert re_host is not None
         net = iptoint(re_host)
@@ -311,7 +311,7 @@ def range_to_net(re_range: str, re_host: Optional[str],
             mask = netmasktoprefix(wildtonetmask(re_mask))
         else:
             mask = netmasktoprefix(iptoint(re_mask))
-    return Prefix(subnet=net, prefix=mask)
+    return Subnet(ip=net, prefix=mask)
 
 # LEN: undefined GE: undefined LE: undefined   ge=32,  le=32
 # LEN: undefined GE: undefined LE: defined     ge=32,  le=LE
@@ -339,7 +339,7 @@ def normalize_prefix_lengths(ip: int,
         raise SyntaxError('must have 0 <= length <= 32')
     if not 0 <= ge <= le <= 32:
         raise SyntaxError('must have 0 <= ge <= le <= 32')
-    return PrefixRange(Prefix(subnet=ip, prefix=length), ge, le)
+    return PrefixRange(Subnet(ip=ip, prefix=length), ge, le)
 
 def safe_int(x: Optional[str]) -> Optional[int]:
     if x is None:
@@ -356,9 +356,9 @@ def parse_prefix_list(arg: str) -> PrefixRange:
     le = safe_int(r.group(4))
     return normalize_prefix_lengths(ip, length, ge, le)
 
-def normalized(subnet: Prefix) -> bool:
+def normalized(subnet: Subnet) -> bool:
     """Return True if host portion of the IP address is all zeroes."""
-    ip = subnet.subnet
+    ip = subnet.ip
     length = subnet.prefix
     return ip & maskof(length) == ip
 
@@ -522,13 +522,13 @@ def main() -> None:
                         sn2 = iptosubnet(a2)
                         logging.debug("sn1 = %r", sn1)
                         logging.debug("sn2 = %r", sn2)
-                        nm2 = netmasktoprefix(sn2.subnet)
-                        if maskof(nm2) != sn2.subnet:
+                        nm2 = netmasktoprefix(sn2.ip)
+                        if maskof(nm2) != sn2.ip:
                             logging.debug("does not match: %d and %d",
-                                          maskof(nm2), sn2.subnet)
+                                          maskof(nm2), sn2.ip)
                             continue
                         logging.debug("nm2 = %r", nm2)
-                        src = Prefix(subnet=sn1.subnet, prefix=nm2)
+                        src = Subnet(ip=sn1.ip, prefix=nm2)
                         dst = iptosubnet("0.0.0.0/0")
                         logging.debug("src = %s", src)
                     else:
