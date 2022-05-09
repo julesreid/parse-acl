@@ -30,6 +30,8 @@ class Prefix(NamedTuple):
     """Represent an IP address or subnet, with prefix length"""
     subnet: int
     prefix: int = 32
+    def __repr__(self) -> str:
+        return '<Prefix ' + subnettoip(self) + '>'
 
 # Set some types used for holding data
 Ge = int
@@ -356,8 +358,8 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
     maxlen = int(maxlen_str)
     assert 0 <= minlen <= maxlen <= 32, (minlen, maxlen)
 
-    logging.debug("ipaddr1 = %s", subnettoip(ipaddr1))
-    logging.debug("ipaddr2 = %s", subnettoip(ipaddr2))
+    logging.debug("ipaddr1 = %r", ipaddr1)
+    logging.debug("ipaddr2 = %r", ipaddr2)
     logging.debug("minlen = %d", minlen)
     logging.debug("maxlen = %d", maxlen)
 
@@ -428,10 +430,8 @@ def main() -> None:
         src_match, src_min, src_max, dst_match, dst_min, dst_max = \
             dst_match, dst_min, dst_max, src_match, src_min, src_max
 
-    logging.debug("src: %s ge %d le %d",
-                  subnettoip(src_match), src_min, src_max)
-    logging.debug("dst: %s ge %d le %d",
-                  subnettoip(dst_match), dst_min, dst_max)
+    logging.debug("src: %r ge %d le %d", src_match, src_min, src_max)
+    logging.debug("dst: %r ge %d le %d", dst_match, dst_min, dst_max)
 
     last_acl_name = None
     current_acl_name = None
@@ -471,13 +471,13 @@ def main() -> None:
             logging.debug("wildcard = %r", wildcard)
             src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6),
                                usewild=wildcard)
-            logging.debug("src = %r", subnettoip(src))
+            logging.debug("src = %r", src)
             dst_range = r.group(8)
             if dst_range is None:
                 dst_range = "any"
             dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11),
                                usewild=wildcard)
-            logging.debug("dst = %r", subnettoip(dst))
+            logging.debug("dst = %r", dst)
         else:
             r = re.match(STANDARD_ACL_RE, line, re.X)
             if r:
@@ -485,20 +485,20 @@ def main() -> None:
                 # XXX ugly code
                 if r.group(4) is None:
                     src = range_to_net(r.group(2), None, r.group(3), "0.0.0.0")
-                    logging.debug("biz = %r", subnettoip(src))
+                    logging.debug("biz = %r", src)
                 else:
                     src = range_to_net(r.group(2), None,
                                        r.group(3), r.group(4))
-                    logging.debug("baz = %r", subnettoip(src))
+                    logging.debug("baz = %r", src)
                 dst = iptosubnet("0.0.0.0/0")
-                logging.debug("qux = %r", subnettoip(dst))
+                logging.debug("qux = %r", dst)
             else:
                 r = re.match(NETWORK_OBJECT_HOST_RE, line, re.X)
                 if r:
                     logging.debug("got NETWORK_OBJECT_HOST_RE")
                     src = iptosubnet(r.group(1))
                     dst = iptosubnet("0.0.0.0/0")
-                    logging.debug("src = %r", subnettoip(src))
+                    logging.debug("src = %r", src)
                 else:
                     r = re.match(NETWORK_OBJECT_NETWORK_RE, line, re.X)
                     if r:
@@ -512,8 +512,8 @@ def main() -> None:
                     if r:
                         a1 = r.group(1)
                         a2 = r.group(2)
-                        logging.debug("a1 = %s", a1)
-                        logging.debug("a2 = %s", a2)
+                        logging.debug("a1 = %r", a1)
+                        logging.debug("a2 = %r", a2)
                         sn1 = iptosubnet(a1)
                         sn2 = iptosubnet(a2)
                         logging.debug("sn1 = %r", sn1)
@@ -526,14 +526,14 @@ def main() -> None:
                         logging.debug("nm2 = %r", nm2)
                         src = Prefix(subnet=sn1.subnet, prefix=nm2)
                         dst = iptosubnet("0.0.0.0/0")
-                        logging.debug("src = %s", subnettoip(src))
+                        logging.debug("src = %s", src)
                     else:
                         r = re.search(SUBNET_RE, line, re.X)
                         if r:
                             logging.debug("GOT SUBNET_RE, line = %r", line)
                             src = iptosubnet(r.group(0))
                             dst = iptosubnet("0.0.0.0/0")
-                            logging.debug("src = %r", subnettoip(src))
+                            logging.debug("src = %r", src)
                         else:
                             logging.debug("NO MATCH = %r", line)
                             last_acl_name = None
