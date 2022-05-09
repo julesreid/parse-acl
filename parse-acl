@@ -24,10 +24,14 @@ import socket
 import struct
 import getopt
 import logging
-from typing import Tuple, Optional
+from typing import Tuple, Optional, NamedTuple
+
+class Prefix(NamedTuple):
+    """Represent an IP address or subnet, with prefix length"""
+    subnet: int
+    prefix: int = 32
 
 # Set some types used for holding data
-Prefix = Tuple[int, int]                # IP address/subnet, prefix length
 Ge = int
 Le = int
 PrefixRange = Tuple[Prefix, Ge, Le]
@@ -221,10 +225,10 @@ def iptosubnet(ip: str) -> Prefix:
     except ValueError:
         mask = 32
     ipaddr_bin = iptoint(ip)
-    return (ipaddr_bin, mask)
+    return Prefix(subnet=ipaddr_bin, prefix=mask)
 
 def subnettoip(subnet: Prefix) -> str:
-    return inttoip(subnet[0]) + '/' + str(subnet[1])
+    return inttoip(subnet.subnet) + '/' + str(subnet.prefix)
 
 def maskof(p: int) -> int:
     return (-1 << (32 - p)) & 0xffffffff
@@ -258,9 +262,9 @@ def match_subnet(subnet1: Prefix, subnet2: Prefix,
         mask = maskof(prefixlen)
         return (addr1 & mask) == (addr2 & mask)
 
-    len1 = subnet1[1]
-    len2 = subnet2[1]
-    containmentp = subnet_test(subnet1[0], subnet2[0], min(len1, len2))
+    len1 = subnet1.prefix
+    len2 = subnet2.prefix
+    containmentp = subnet_test(subnet1.subnet, subnet2.subnet, min(len1, len2))
     return containmentp and minlen <= len1 <= maxlen
 
 def containment(subnet1: Prefix, subnet2: Prefix) -> bool:
@@ -270,14 +274,14 @@ def contains(subnet1: Prefix, subnet2: Prefix) -> bool:
     """Test if network (a.addr,a.mask) CONTAINS (b.addr,b.mask)
 
     Caveat: Don't assume that a or b is normalised."""
-    return match_subnet(subnet1, subnet2, 0, subnet2[1])
+    return match_subnet(subnet1, subnet2, 0, subnet2.prefix)
 
 def is_contained_in(subnet1: Prefix, subnet2: Prefix) -> bool:
     """Test if network SUBNET1 IS CONTAINED IN SUBNET2"""
-    return match_subnet(subnet1, subnet2, subnet2[1], 32)
+    return match_subnet(subnet1, subnet2, subnet2.prefix, 32)
 
 def matches_exact(subnet1: Prefix, subnet2: Prefix) -> bool:
-    return match_subnet(subnet1, subnet2, subnet2[1], subnet2[1])
+    return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
 
 ### Parsing
 
@@ -297,7 +301,7 @@ def range_to_net(re_range: str, re_host: Optional[str],
             mask = netmasktoprefix(wildtonetmask(re_mask))
         else:
             mask = netmasktoprefix(iptoint(re_mask))
-    return (net, mask)
+    return Prefix(subnet=net, prefix=mask)
 
 # LEN: undefined GE: undefined LE: undefined   ge=32,  le=32
 # LEN: undefined GE: undefined LE: defined     ge=32,  le=LE
@@ -321,7 +325,7 @@ def normalize_prefix_lengths(ip: int,
             le = 32
     elif ge is None:
         ge = length
-    return ((ip, length), ge, le)
+    return (Prefix(subnet=ip, prefix=length), ge, le)
 
 def safe_int(x: Optional[str]) -> Optional[int]:
     if x is None:
@@ -340,8 +344,8 @@ def parse_prefix_list(arg: str) -> PrefixRange:
 
 def normalized(subnet: Prefix) -> bool:
     """Return True if host portion of the IP address is all zeroes."""
-    ip = subnet[0]
-    length = subnet[1]
+    ip = subnet.subnet
+    length = subnet.prefix
     return ip & maskof(length) == ip
 
 def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
@@ -514,13 +518,13 @@ def main() -> None:
                         sn2 = iptosubnet(a2)
                         logging.debug("sn1 = %r", sn1)
                         logging.debug("sn2 = %r", sn2)
-                        nm2 = netmasktoprefix(sn2[0])
-                        if maskof(nm2) != sn2[0]:
+                        nm2 = netmasktoprefix(sn2.subnet)
+                        if maskof(nm2) != sn2.subnet:
                             logging.debug("does not match: %d and %d",
-                                          maskof(nm2), sn2[0])
+                                          maskof(nm2), sn2.subnet)
                             continue
                         logging.debug("nm2 = %r", nm2)
-                        src = (sn1[0], nm2)
+                        src = Prefix(subnet=sn1.subnet, prefix=nm2)
                         dst = iptosubnet("0.0.0.0/0")
                         logging.debug("src = %s", subnettoip(src))
                     else:
