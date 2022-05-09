@@ -35,7 +35,7 @@ class Subnet(NamedTuple):
 
 class PrefixRange(NamedTuple):
     """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
-    prefix: Subnet
+    subnet: Subnet
     ge: int
     le: int
 
@@ -291,7 +291,7 @@ def matches_exact(subnet1: Subnet, subnet2: Subnet) -> bool:
     return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
 
 def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
-    return match_subnet(subnet, prefix.prefix, prefix.ge, prefix.le)
+    return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
 ### Parsing
 
@@ -403,15 +403,15 @@ def main() -> None:
         if opt == '-s':
             # Handle source address
             srcip = parse_prefix_list(arg)
-            if not normalized(srcip.prefix):
+            if not normalized(srcip.subnet):
                 print("warning: src ip not normalized (%s)"
-                      % subnettoip(srcip.prefix))
+                      % subnettoip(srcip.subnet))
         elif opt == '-d':
             # Handle destination address
             dstip = parse_prefix_list(arg)
-            if not normalized(dstip.prefix):
+            if not normalized(dstip.subnet):
                 print("warning: dst ip not normalized (%s)"
-                      % subnettoip(dstip.prefix))
+                      % subnettoip(dstip.subnet))
         elif opt == '-x':
             reverse = True
         elif opt == '-v':
