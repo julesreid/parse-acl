@@ -234,12 +234,16 @@ def inttoip(int_: IP) -> str:
 def iptosubnet(ip: str) -> Subnet:
     """Convert a string with an IP address and prefix into the internal
     Subnet format"""
-    try:
-        i = ip.index('/')
-        mask = int(ip[i + 1:])
-        ip = ip[:i]
-    except ValueError:
+
+    parts = ip.split('/')
+    if len(parts) == 1:
         mask = 32
+    elif len(parts) == 2:
+        mask = int(parts[1])
+    else:
+        raise SyntaxError('subnet must have zero or one slashes')
+    ip = parts[0]
+
     ipaddr_bin = iptoint(ip)
     return Subnet(ip=ipaddr_bin, prefix=mask)
 
