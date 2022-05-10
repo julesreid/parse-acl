@@ -472,44 +472,48 @@ def main() -> None:
     if reverse:
         srcmatch, dstmatch = dstmatch, srcmatch
 
-    logging.debug("src: %r", srcmatch)
-    logging.debug("dst: %r", dstmatch)
+    logging.debug("srcmatch = %r", srcmatch)
+    logging.debug("dstmatch = %r", dstmatch)
 
     last_acl_name = None
     current_acl_name = None
     current_acl_line = None
-    line_num = 0
-    for line in sys.stdin:
-        line = line.replace('\n', '')
-        line_num += 1
-        if re.match(ACL_HEADER, line, re.X):
-            logging.debug("ACL_HEADER = %r", line)
+    for line_num, line in enumerate(sys.stdin, start=1):
+        line = line.rstrip('\r\n')
+        logging.debug("linenum = %r, line = %r", line_num, line)
+        re_match = re.match(ACL_HEADER, line, re.X)
+        if re_match:
+            logging.debug("ACL_HEADER = %r", re_match.groups())
             current_acl_name = line
             current_acl_line = line_num
             continue
-        if re.match(EXTENDED_IGNORE_RE, line, re.X):
-            logging.debug("EXTENDED_IGNORE_RE = %r", line)
+        re_match = re.match(EXTENDED_IGNORE_RE, line, re.X)
+        if re_match:
+            assert re_match.groups() == ()
+            logging.debug("got EXTENDED_IGNORE_RE")
+            # Do not reset current_acl_name (parser is in middle of object)
             continue
         re_match = re.match(ROUTE_RE, line, re.X)
         if re_match:
+            logging.debug("got ROUTE_RE = %r", re_match.groups())
             srcarg = re_match.group(1)
             msk = re_match.group(2)
             dstarg = re_match.group(3)
-            #srcarg = iptosubnet(srcarg)
             logging.debug("route %r %r %r", srcarg, msk, dstarg)
-            #continue
 
         re_match = re.match(EXTENDED_ACL_RE, line, re.X)
         if re_match:
+            logging.debug("EXTENDED_ACL_RE = %r", re_match.groups())
             wildcard = True
         else:
             re_match = re.match(EXTENDED_ASA_ACL_RE, line, re.X)
-            wildcard = False
+            if re_match:
+                logging.debug("EXTENDED_ASA_ACL_RE = %r", re_match.groups())
+                wildcard = False
         if re_match:
             # XXX needs to work when both -s and -d specified (logical or)
             # XXX needs error checking
             # XXX $7 and $12 are source or destination ports (if any)
-            logging.debug("EXTENDED_ACL_RE, line = %r", line)
             logging.debug("wildcard = %r", wildcard)
             src = range_to_net(re_match.group(3), re_match.group(4),
                                re_match.group(5), re_match.group(6),
@@ -581,12 +585,15 @@ def main() -> None:
                             dst = iptosubnet("0.0.0.0/0")
                             logging.debug("src = %r", src)
                         else:
-                            logging.debug("NO MATCH = %r", line)
                             last_acl_name = None
                             current_acl_name = None
                             current_acl_line = None
                             continue
 
+        logging.debug('current_acl_name = %r, '
+                      'current_acl_line = %r, '
+                      'last_acl_name = %r',
+                      current_acl_name, current_acl_line, last_acl_name)
         if (match_subnet_prefixrange(src, srcmatch) and
                 match_subnet_prefixrange(dst, dstmatch)):
             if current_acl_name and (last_acl_name is None
