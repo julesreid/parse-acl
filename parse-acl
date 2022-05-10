@@ -1,22 +1,24 @@
 #!/usr/bin/env python
-#
-# Script to find address ranges within a Cisco ACL
-#
-# The idea is to find all ACLs which apply to a certain host or
-# network range.
-#
-# To do:
-#
-# * Implement ASA ACLs using the following keywords:
-#     object network
-#     object service
-#     object-group network
-#     object-group protocol
-#     object-group service
-#     access-list
-# * Match more than the first IP address on a line (only the first IP
-#   address on a line is tested -- all others are ignored).
-# * Match ranges (correctly accounting for overlaps, either in whole or part)
+
+"""
+Script to find address ranges within a Cisco ACL
+
+The idea is to find all ACLs which apply to a certain host or
+network range.
+
+To do:
+
+* Implement ASA ACLs using the following keywords:
+    object network
+    object service
+    object-group network
+    object-group protocol
+    object-group service
+    access-list
+* Match more than the first IP address on a line (only the first IP
+  address on a line is tested -- all others are ignored).
+* Match ranges (correctly accounting for overlaps, either in whole or part)
+"""
 
 import sys
 import re
@@ -24,24 +26,27 @@ import socket
 import struct
 import getopt
 import logging
-from typing import Tuple, Optional, NamedTuple
+from typing import Optional, NamedTuple
+
+# Set some types used for holding data
+#
+IP = int
+# For use when 3.9 is available
+#PrefixLength = Annotated[int, ValueRange(0, 32)]
+PrefixLength = int
 
 class Subnet(NamedTuple):
     """Represent an IP address or subnet, with prefix length"""
-    ip: int
-    prefix: int = 32
+    ip: IP
+    prefix: PrefixLength = 32
     def __repr__(self) -> str:
         return 'Subnet(' + subnettoip(self) + ')'
 
 class PrefixRange(NamedTuple):
     """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
     subnet: Subnet
-    ge: int
-    le: int
-
-# Set some types used for holding data
-Ge = int
-Le = int
+    ge: PrefixLength
+    le: PrefixLength
 
 ### IP address, subnet and prefix list matching
 
@@ -217,14 +222,18 @@ EXTENDED_IGNORE_RE = (r'(?:(?:access-list\ \d+)?\ (?:dynamic|evaluate|remark)'
 
 ### IP address utility functions
 
-def iptoint(ip: str) -> int:
-    result: int = struct.unpack("!I", socket.inet_aton(ip))[0]
+def iptoint(ip: str) -> IP:
+    """Convert an IP address as a string into the internal IP format"""
+    result: IP = struct.unpack("!I", socket.inet_aton(ip))[0]
     return result
 
-def inttoip(int_: int) -> str:
+def inttoip(int_: IP) -> str:
+    """Convert the internal IP format into an IP address as a string"""
     return socket.inet_ntoa(struct.pack("!I", int_))
 
 def iptosubnet(ip: str) -> Subnet:
+    """Convert a string with an IP address and prefix into the internal
+    Subnet format"""
     try:
         i = ip.index('/')
         mask = int(ip[i + 1:])
@@ -235,17 +244,25 @@ def iptosubnet(ip: str) -> Subnet:
     return Subnet(ip=ipaddr_bin, prefix=mask)
 
 def subnettoip(subnet: Subnet) -> str:
+    """Convert the internal Subnet format into a string with an IP address
+    and prefix"""
     return inttoip(subnet.ip) + '/' + str(subnet.prefix)
 
-def maskof(p: int) -> int:
-    return (-1 << (32 - p)) & 0xffffffff
+def maskof(length: PrefixLength) -> IP:
+    """Given a prefix length, return the internal representation IP subnet
+    mask.  This mask can be used in bitwise operations with an IP address."""
+    return (-1 << (32 - length)) & 0xffffffff
 
-def wildtonetmask(wild: str) -> int:
-    n = iptoint(wild)
-    n = (~n) & 0xffffffff
-    return n
+def wildtonetmask(wild: str) -> IP:
+    """Convert a wildcard mask as a string into the internal IP format
+    of a net mask"""
+    wildmask = iptoint(wild)
+    netmask = (~wildmask) & 0xffffffff
+    return netmask
 
-def netmasktoprefix(mask: int) -> int:
+def netmasktoprefix(mask: IP) -> PrefixLength:
+    """Given an internal representation of a subnet mask, return the
+    corresponding prefix length."""
     prefix = 32
 
     # Change netmask to a wildcard so that all of the 1s are on the right.
@@ -259,11 +276,11 @@ def netmasktoprefix(mask: int) -> int:
 ### IP subnet matching
 
 def match_subnet(subnet1: Subnet, subnet2: Subnet,
-                 minlen: int, maxlen: int) -> bool:
+                 minlen: PrefixLength, maxlen: PrefixLength) -> bool:
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
     either a superset or subset of SUBNET2 that falls within the prefix
     length range between MINLEN and MAXLEN."""
-    def subnet_test(addr1: int, addr2: int, prefixlen: int) -> bool:
+    def subnet_test(addr1: IP, addr2: IP, prefixlen: PrefixLength) -> bool:
         """Test two IPv4 addresses, ADDR1 and ADDR2, for equality when
         normalized to a common prefix length PREFIXLEN."""
         mask = maskof(prefixlen)
@@ -275,6 +292,7 @@ def match_subnet(subnet1: Subnet, subnet2: Subnet,
     return containmentp and minlen <= len1 <= maxlen
 
 def containment(subnet1: Subnet, subnet2: Subnet) -> bool:
+    """Return True if subnet1 is a subnet of subnet2 or vice versa"""
     return match_subnet(subnet1, subnet2, 0, 32)
 
 def contains(subnet1: Subnet, subnet2: Subnet) -> bool:
@@ -288,9 +306,13 @@ def is_contained_in(subnet1: Subnet, subnet2: Subnet) -> bool:
     return match_subnet(subnet1, subnet2, subnet2.prefix, 32)
 
 def matches_exact(subnet1: Subnet, subnet2: Subnet) -> bool:
+    """Test if subnet1 and subnet2 are identical, with the same IP
+    and prefix length"""
     return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
 
 def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
+    """Test if subnet falls within the subset or superset given
+    by the prefix range prefix"""
     return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
 ### Parsing
@@ -299,6 +321,10 @@ def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
 # acls but not in standard acls)
 def range_to_net(re_range: str, re_host: Optional[str],
                  re_net: str, re_mask: str, usewild: bool = True) -> Subnet:
+    """Given the parts of a regex matching an ACL in the text,
+    convert it to a subnet.  If usewild is set, reverse the bits of
+    the re_mask variable.  The regexes that are used in the matching
+    are EXTENDED_ACL_RE, EXTENDED_ASA_ACL_RE, and STANDARD_ACL_RE."""
     if re_range.startswith('host '):
         assert re_host is not None
         net = iptoint(re_host)
@@ -326,6 +352,8 @@ def normalize_prefix_lengths(ip: int,
                              length: Optional[int],
                              ge: Optional[int],
                              le: Optional[int]) -> PrefixRange:
+    """Fill in the parts of a prefix range using default or derived
+    values if those parts are None"""
     if length is None:
         length = 32
     if le is None:
@@ -341,19 +369,22 @@ def normalize_prefix_lengths(ip: int,
         raise SyntaxError('must have 0 <= ge <= le <= 32')
     return PrefixRange(Subnet(ip=ip, prefix=length), ge, le)
 
-def safe_int(x: Optional[str]) -> Optional[int]:
-    if x is None:
+def safe_int(intstr: Optional[str]) -> Optional[int]:
+    """Convert a string to an integer, or None is intstr is None"""
+    if intstr is None:
         return None
-    return int(x)
+    return int(intstr)
 
 def parse_prefix_list(arg: str) -> PrefixRange:
-    r = re.match(PREFIX_RE, arg, re.X)
-    if not r:
+    """Given the string representation of a prefix range, convert it
+    to a PrefixRange object"""
+    re_match = re.match(PREFIX_RE, arg, re.X)
+    if not re_match:
         raise SyntaxError('invalid prefix range')
-    ip = iptoint(r.group(1))
-    length = safe_int(r.group(2))
-    ge = safe_int(r.group(3))
-    le = safe_int(r.group(4))
+    ip = iptoint(re_match.group(1))
+    length = safe_int(re_match.group(2))
+    ge = safe_int(re_match.group(3))
+    le = safe_int(re_match.group(4))
     return normalize_prefix_lengths(ip, length, ge, le)
 
 def normalized(subnet: Subnet) -> bool:
@@ -364,6 +395,7 @@ def normalized(subnet: Subnet) -> bool:
 
 def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
                 minlen_str: str, maxlen_str: str) -> None:
+    """Conduct various tests on the arguments, used for testing the script"""
     ipaddr1 = iptosubnet(ipaddr1_str)
     ipaddr2 = iptosubnet(ipaddr2_str)
     minlen = int(minlen_str)
@@ -387,6 +419,8 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
 ### Main program
 
 def main() -> None:
+    """Main routine"""
+
     # Match anything by default
     srcmatch = dstmatch = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
     reverse = False
@@ -452,90 +486,94 @@ def main() -> None:
         if re.match(EXTENDED_IGNORE_RE, line, re.X):
             logging.debug("EXTENDED_IGNORE_RE = %r", line)
             continue
-        r = re.match(ROUTE_RE, line, re.X)
-        if r:
-            srcarg = r.group(1)
-            msk = r.group(2)
-            dstarg = r.group(3)
+        re_match = re.match(ROUTE_RE, line, re.X)
+        if re_match:
+            srcarg = re_match.group(1)
+            msk = re_match.group(2)
+            dstarg = re_match.group(3)
             #srcarg = iptosubnet(srcarg)
             logging.debug("route %r %r %r", srcarg, msk, dstarg)
             #continue
 
-        r = re.match(EXTENDED_ACL_RE, line, re.X)
-        if r:
+        re_match = re.match(EXTENDED_ACL_RE, line, re.X)
+        if re_match:
             wildcard = True
         else:
-            r = re.match(EXTENDED_ASA_ACL_RE, line, re.X)
+            re_match = re.match(EXTENDED_ASA_ACL_RE, line, re.X)
             wildcard = False
-        if r:
+        if re_match:
             # XXX needs to work when both -s and -d specified (logical or)
             # XXX needs error checking
             # XXX $7 and $12 are source or destination ports (if any)
             logging.debug("EXTENDED_ACL_RE, line = %r", line)
             logging.debug("wildcard = %r", wildcard)
-            src = range_to_net(r.group(3), r.group(4), r.group(5), r.group(6),
+            src = range_to_net(re_match.group(3), re_match.group(4),
+                               re_match.group(5), re_match.group(6),
                                usewild=wildcard)
             logging.debug("src = %r", src)
-            dst_range = r.group(8)
+            dst_range = re_match.group(8)
             if dst_range is None:
                 dst_range = "any"
-            dst = range_to_net(dst_range, r.group(9), r.group(10), r.group(11),
+            dst = range_to_net(dst_range,
+                               re_match.group(9), re_match.group(10),
+                               re_match.group(11),
                                usewild=wildcard)
             logging.debug("dst = %r", dst)
         else:
-            r = re.match(STANDARD_ACL_RE, line, re.X)
-            if r:
+            re_match = re.match(STANDARD_ACL_RE, line, re.X)
+            if re_match:
                 logging.debug("STANDARD_ACL_RE = %r", line)
                 # XXX ugly code
-                if r.group(4) is None:
-                    src = range_to_net(r.group(2), None, r.group(3), "0.0.0.0")
+                if re_match.group(4) is None:
+                    src = range_to_net(re_match.group(2), None,
+                                       re_match.group(3), "0.0.0.0")
                     logging.debug("biz = %r", src)
                 else:
-                    src = range_to_net(r.group(2), None,
-                                       r.group(3), r.group(4))
+                    src = range_to_net(re_match.group(2), None,
+                                       re_match.group(3), re_match.group(4))
                     logging.debug("baz = %r", src)
                 dst = iptosubnet("0.0.0.0/0")
                 logging.debug("qux = %r", dst)
             else:
-                r = re.match(NETWORK_OBJECT_HOST_RE, line, re.X)
-                if r:
+                re_match = re.match(NETWORK_OBJECT_HOST_RE, line, re.X)
+                if re_match:
                     logging.debug("got NETWORK_OBJECT_HOST_RE")
-                    src = iptosubnet(r.group(1))
+                    src = iptosubnet(re_match.group(1))
                     dst = iptosubnet("0.0.0.0/0")
                     logging.debug("src = %r", src)
                 else:
-                    r = re.match(NETWORK_OBJECT_NETWORK_RE, line, re.X)
-                    if r:
+                    re_match = re.match(NETWORK_OBJECT_NETWORK_RE, line, re.X)
+                    if re_match:
                         logging.debug("NETWORK_OBJECT_NETWORK_RE, line = %r",
                                       line)
                     else:
-                        r = re.search(SUBNET_WITH_MASK_RE, line, re.X)
-                        if r:
+                        re_match = re.search(SUBNET_WITH_MASK_RE, line, re.X)
+                        if re_match:
                             logging.debug("SUBNET_WITH_MASK_RE, line = %r",
                                           line)
-                    if r:
-                        a1 = r.group(1)
-                        a2 = r.group(2)
-                        logging.debug("a1 = %r", a1)
-                        logging.debug("a2 = %r", a2)
-                        sn1 = iptosubnet(a1)
-                        sn2 = iptosubnet(a2)
-                        logging.debug("sn1 = %r", sn1)
-                        logging.debug("sn2 = %r", sn2)
-                        nm2 = netmasktoprefix(sn2.ip)
-                        if maskof(nm2) != sn2.ip:
+                    if re_match:
+                        straddr = re_match.group(1)
+                        strmask = re_match.group(2)
+                        logging.debug("straddr = %r", straddr)
+                        logging.debug("strmask = %r", strmask)
+                        addr = iptosubnet(straddr)
+                        mask = iptosubnet(strmask)
+                        logging.debug("addr = %r", addr)
+                        logging.debug("mask = %r", mask)
+                        preflen = netmasktoprefix(mask.ip)
+                        if maskof(preflen) != mask.ip:
                             logging.debug("does not match: %d and %d",
-                                          maskof(nm2), sn2.ip)
+                                          maskof(preflen), mask.ip)
                             continue
-                        logging.debug("nm2 = %r", nm2)
-                        src = Subnet(ip=sn1.ip, prefix=nm2)
+                        logging.debug("preflen = %r", preflen)
+                        src = Subnet(ip=addr.ip, prefix=preflen)
                         dst = iptosubnet("0.0.0.0/0")
                         logging.debug("src = %s", src)
                     else:
-                        r = re.search(SUBNET_RE, line, re.X)
-                        if r:
+                        re_match = re.search(SUBNET_RE, line, re.X)
+                        if re_match:
                             logging.debug("GOT SUBNET_RE, line = %r", line)
-                            src = iptosubnet(r.group(0))
+                            src = iptosubnet(re_match.group(0))
                             dst = iptosubnet("0.0.0.0/0")
                             logging.debug("src = %r", src)
                         else:
