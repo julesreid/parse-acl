@@ -388,7 +388,7 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
 
 def main() -> None:
     # Match anything by default
-    srcip = dstip = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
+    srcmatch = dstmatch = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
     reverse = False
     test = False
     log_level = logging.INFO
@@ -402,16 +402,16 @@ def main() -> None:
     for opt, arg in opts:
         if opt == '-s':
             # Handle source address
-            srcip = parse_prefix_list(arg)
-            if not normalized(srcip.subnet):
+            srcmatch = parse_prefix_list(arg)
+            if not normalized(srcmatch.subnet):
                 print("warning: src ip not normalized (%s)"
-                      % subnettoip(srcip.subnet))
+                      % subnettoip(srcmatch.subnet))
         elif opt == '-d':
             # Handle destination address
-            dstip = parse_prefix_list(arg)
-            if not normalized(dstip.subnet):
+            dstmatch = parse_prefix_list(arg)
+            if not normalized(dstmatch.subnet):
                 print("warning: dst ip not normalized (%s)"
-                      % subnettoip(dstip.subnet))
+                      % subnettoip(dstmatch.subnet))
         elif opt == '-x':
             reverse = True
         elif opt == '-v':
@@ -432,10 +432,10 @@ def main() -> None:
         sys.exit(0)
 
     if reverse:
-        srcip, dstip = dstip, srcip
+        srcmatch, dstmatch = dstmatch, srcmatch
 
-    logging.debug("src: %r", srcip)
-    logging.debug("dst: %r", dstip)
+    logging.debug("src: %r", srcmatch)
+    logging.debug("dst: %r", dstmatch)
 
     last_acl_name = None
     current_acl_name = None
@@ -545,8 +545,8 @@ def main() -> None:
                             current_acl_line = None
                             continue
 
-        if (match_subnet_prefixrange(src, srcip) and
-                match_subnet_prefixrange(dst, dstip)):
+        if (match_subnet_prefixrange(src, srcmatch) and
+                match_subnet_prefixrange(dst, dstmatch)):
             if current_acl_name and (last_acl_name is None
                                      or last_acl_name != current_acl_name):
                 assert current_acl_line is not None
