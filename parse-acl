@@ -26,7 +26,7 @@ import socket
 import struct
 import getopt
 import logging
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Tuple, List
 
 # Set some types used for holding data
 #
@@ -422,9 +422,8 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
 
 ### Main program
 
-def main() -> None:
-    """Main routine"""
-
+def getoptions() -> Tuple[PrefixRange, PrefixRange, bool, int, bool, List[str]]:
+    """Parse the command-line options"""
     # Match anything by default
     srcmatch = dstmatch = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
     reverse = False
@@ -456,6 +455,13 @@ def main() -> None:
             log_level = logging.DEBUG
         elif opt == '-t':
             test = True
+
+    return srcmatch, dstmatch, reverse, log_level, test, parseargs
+
+def main() -> None:
+    """Main routine"""
+
+    srcmatch, dstmatch, reverse, log_level, test, parseargs = getoptions()
 
     # Set up logging
     logging.basicConfig(level=log_level,
