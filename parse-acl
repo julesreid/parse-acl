@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Script to find address ranges within a Cisco ACL
+Find prefix ranges in ACLs from a Cisco router or firewall
 
 The idea is to find all ACLs which apply to a certain host or
 network range.
@@ -24,9 +24,9 @@ import sys
 import re
 import socket
 import struct
-import getopt
+import argparse
 import logging
-from typing import Optional, NamedTuple, Tuple, List
+from typing import Optional, NamedTuple, Union, Sequence, Any
 
 # Set some types used for holding data
 #
@@ -420,62 +420,88 @@ def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
     for name, result in results:
         print("%-22s  %s" % (name, result))
 
-### Main program
+class PrefixRangeAction(argparse.Action):
+    """Customized action for the PrefixLength arguments"""
+    def __call__(self,
+                 parser: argparse.ArgumentParser,
+                 namespace: argparse.Namespace,
+                 values: Union[str, Sequence[Any], None],
+                 option_string: Optional[str] = None) -> None:
+        """Set the PrefixLength argument"""
+        assert isinstance(values, str)
+        direction = 'source' if option_string == '-s' else 'destination'
+        srcmatch = parse_prefix_list(values)
+        if not normalized(srcmatch.subnet):
+            print("warning: %s subnet not normalized (%s)"
+                  % (direction, subnettoip(srcmatch.subnet)))
+        setattr(namespace, self.dest, srcmatch)
 
-def getoptions() -> Tuple[PrefixRange, PrefixRange, bool, int, bool, List[str]]:
+def getoptions() -> argparse.Namespace:
     """Parse the command-line options"""
-    # Match anything by default
-    srcmatch = dstmatch = PrefixRange(iptosubnet("0.0.0.0/0"), ge=0, le=32)
-    reverse = False
-    test = False
-    log_level = logging.INFO
 
-    try:
-        opts, parseargs = getopt.getopt(sys.argv[1:], 's:d:xvt')
-    except getopt.GetoptError as err:
-        print("%s: %s" % (sys.argv[0], err))
-        sys.exit(1)
-    #print "DEBUG:", opts, parseargs
-    for opt, arg in opts:
-        if opt == '-s':
-            # Handle source address
-            srcmatch = parse_prefix_list(arg)
-            if not normalized(srcmatch.subnet):
-                print("warning: src ip not normalized (%s)"
-                      % subnettoip(srcmatch.subnet))
-        elif opt == '-d':
-            # Handle destination address
-            dstmatch = parse_prefix_list(arg)
-            if not normalized(dstmatch.subnet):
-                print("warning: dst ip not normalized (%s)"
-                      % subnettoip(dstmatch.subnet))
-        elif opt == '-x':
-            reverse = True
-        elif opt == '-v':
-            log_level = logging.DEBUG
-        elif opt == '-t':
-            test = True
+    parser = argparse.ArgumentParser(
+        description='Find prefix ranges in ACLs from a Cisco '
+                    'router or firewall')
 
-    return srcmatch, dstmatch, reverse, log_level, test, parseargs
+    parser.add_argument('-s', '--source',
+                        help='source prefix range to match in configuration',
+                        # Match anything by default
+                        default=PrefixRange(iptosubnet("0.0.0.0/0"),
+                                            ge=0, le=32),
+                        action=PrefixRangeAction,
+                        metavar='SOURCE')
+    parser.add_argument('-d', '--destination',
+                        help='destination prefix range to match in '
+                             'configuration',
+                        # Match anything by default
+                        default=PrefixRange(iptosubnet("0.0.0.0/0"),
+                                            ge=0, le=32),
+                        action=PrefixRangeAction,
+                        metavar='DESTINATION')
+    parser.add_argument('-x', '--reverse',
+                        help='swap the source and destinaton addresses '
+                             '(for convenience)',
+                        action='store_true')
+    parser.add_argument('-v', '--verbose',
+                        help='be verbose',
+                        action='store_const',
+                        default=logging.INFO,
+                        const=logging.DEBUG,
+                        dest='log_level')
+    parser.add_argument('-t', '--test',
+                        nargs=4,
+                        help='test the arguments from the command line '
+                             '(source1, source2, minlen, maxlen)',
+                        action='extend')
+
+    return parser.parse_args()
+
+### Main program
 
 def main() -> None:
     """Main routine"""
 
-    srcmatch, dstmatch, reverse, log_level, test, parseargs = getoptions()
+    args = getoptions()
+    assert isinstance(args.source, PrefixRange)
+    assert isinstance(args.destination, PrefixRange)
+    assert isinstance(args.log_level, int)
+    assert isinstance(args.reverse, bool)
+
+    srcmatch = args.source
+    dstmatch = args.destination
 
     # Set up logging
-    logging.basicConfig(level=log_level,
+    logging.basicConfig(level=args.log_level,
                         format="%(levelname)s:%(funcName)s:"
                                "%(lineno)d:%(message)s")
 
-    if test:
-        if len(parseargs) != 4:
-            raise ValueError('not right number of arguments for -t')
-        testsubnets(ipaddr1_str=parseargs[0], ipaddr2_str=parseargs[1],
-                    minlen_str=parseargs[2], maxlen_str=parseargs[3])
+    if args.test:
+        assert isinstance(args.test, list)
+        testsubnets(ipaddr1_str=args.test[0], ipaddr2_str=args.test[1],
+                    minlen_str=args.test[2], maxlen_str=args.test[3])
         sys.exit(0)
 
-    if reverse:
+    if args.reverse:
         srcmatch, dstmatch = dstmatch, srcmatch
 
     logging.debug("srcmatch = %r", srcmatch)
