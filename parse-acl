@@ -125,6 +125,27 @@ ROUTE_RE = r'''
     $
 '''
 
+IP_NAT_POOL_RE = r'''
+    [ ]*
+    ip[ ]nat[ ]pool[ ]
+    \S+[ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    netmask
+    [ ]
+    (''' + IP_ADDR + r''')
+'''
+
+IP_NAT_INSIDE_SOURCE_STATIC_RE = r'''
+    [ ]*
+    ip[ ]nat[ ]inside[ ]source[ ]static[ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+'''
+
 ### ACL matching
 
 ACL_HEADER = (r'^(?:ip\ access-list\ (?:standard|extended)'
@@ -584,22 +605,36 @@ def network_object_host_re(re_match: Match[str]) -> SrcDst:
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
-def handle_subnet(re_match: Match[str]) -> SrcDst:
+def handle_subnet(straddr: str, strmask: str) -> SrcDst:
     """Handle configuration lines that have an IP address and a
     separate network mask (not a prefix)."""
-    src = addrmasktosubnet(re_match.group(1), re_match.group(2))
+    src = addrmasktosubnet(straddr, strmask)
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
 def network_object_network_re(re_match: Match[str]) -> SrcDst:
     """Match the NETWORK_OBJECT_NETWORK_RE regex"""
     logging.debug("got NETWORK_OBJECT_NETWORK_RE = %r", re_match.groups())
-    return handle_subnet(re_match)
+    return handle_subnet(re_match.group(1), re_match.group(2))
+
+def ip_nat_pool_re(re_match: Match[str]) -> SrcDst:
+    """Match the IP_NAT_POOL_RE regex"""
+    logging.debug("got IP_NAT_POOL_RE = %r", re_match.groups())
+    # Ignore re_match.group(2) for now
+    return handle_subnet(re_match.group(1), re_match.group(3))
+
+def ip_nat_inside_source_static_re(re_match: Match[str]) -> SrcDst:
+    """Match the IP_NAT_INSIDE_SOURCE_STATIC_RE regex"""
+    logging.debug("got IP_NAT_INSIDE_SOURCE_STATIC_RE = %r", re_match.groups())
+    # Ignore re_match.group(2) for now
+    src = iptosubnet(re_match.group(1))
+    dst = iptosubnet("0.0.0.0/0")
+    return src, dst
 
 def subnet_with_mask_re(re_match: Match[str]) -> SrcDst:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.groups())
-    return handle_subnet(re_match)
+    return handle_subnet(re_match.group(1), re_match.group(2))
 
 def subnet_re(re_match: Match[str]) -> SrcDst:
     """Match the SUBNET_RE regex"""
@@ -617,6 +652,8 @@ MATCH_RE_TABLE = (
     (STANDARD_ACL_RE, standard_acl_re),
     (NETWORK_OBJECT_HOST_RE, network_object_host_re),
     (NETWORK_OBJECT_NETWORK_RE, network_object_network_re),
+    (IP_NAT_POOL_RE, ip_nat_pool_re),
+    (IP_NAT_INSIDE_SOURCE_STATIC_RE, ip_nat_inside_source_static_re),
     (SUBNET_WITH_MASK_RE, subnet_with_mask_re),
     (SUBNET_RE, subnet_re),
 )
