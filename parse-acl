@@ -102,7 +102,7 @@ NETWORK_OBJECT_HOST_RE = r'''
 NETWORK_OBJECT_NETWORK_RE = r'''
     ^
     [ ]*
-    ''' + NETWORK_OBJECT_RE + '''
+    ''' + NETWORK_OBJECT_RE + r'''
     (''' + IP_ADDR + r''')
     [ ]
     (''' + IP_ADDR + r''')
@@ -266,15 +266,11 @@ def iptosubnet(ip: str) -> Subnet:
 
     parts = ip.split('/')
     if len(parts) == 1:
-        mask = 32
+        return Subnet(ip=iptoint(parts[0]))
     elif len(parts) == 2:
-        mask = int(parts[1])
+        return Subnet(ip=iptoint(parts[0]), prefix=int(parts[1]))
     else:
         raise SyntaxError('subnet must have zero or one slashes')
-    ip = parts[0]
-
-    ipaddr_bin = iptoint(ip)
-    return Subnet(ip=ipaddr_bin, prefix=mask)
 
 def subnettoip(subnet: Subnet) -> str:
     """Convert the internal Subnet format into a string with an IP address
@@ -672,9 +668,7 @@ def find_match(line: str) -> Optional[SrcDst]:
         re_match = re.match(match_re, line, re.X)
         if not re_match:
             continue
-        #src, dst = match_func(re_match)
-        retval = match_func(re_match)
-        src, dst = retval
+        src, dst = match_func(re_match)
         logging.debug("src = %r, dst = %r", src, dst)
         return src, dst
     return None
