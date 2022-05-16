@@ -156,6 +156,26 @@ IP_NAT_INSIDE_SOURCE_STATIC_RE = r'''
     (''' + IP_ADDR + r''')
 '''
 
+# Limit of 8 IP addresses due to the way the matcher works.  Ideally,
+# there would be one regex for the continuation IP addresses, but Python
+# only returns the last match of a group which matches multiple times.
+#
+# See the documentation for group():
+# https://docs.python.org/3/library/re.html#re.Match.group
+#
+SMTP_SERVER_RE = r'''
+    [ ]*
+    smtp-server
+       [ ](''' + IP_ADDR + r''')
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+    (?:[ ](''' + IP_ADDR + r'''))?
+'''
+
 ### ACL matching
 
 ACL_HEADER = (r'^(?:ip\ access-list\ (?:standard|extended)'
@@ -645,6 +665,14 @@ def ip_nat_inside_source_static_re(re_match: Match[str]) -> SrcDst:
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
+def smtp_server_re(re_match: Match[str]) -> SrcDst:
+    """Match the SMTP_SERVER_RE regex"""
+    logging.debug("got SMTP_SERVER_RE = %r", re_match.groups())
+    # Ignore multiple matches for now
+    src = iptosubnet(re_match.group(1))
+    dst = iptosubnet("0.0.0.0/0")
+    return src, dst
+
 def subnet_with_mask_re(re_match: Match[str]) -> SrcDst:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.groups())
@@ -669,6 +697,7 @@ MATCH_RE_TABLE = (
     (NETWORK_OBJECT_NETWORK_RE, network_object_network_re),
     (IP_NAT_POOL_RE, ip_nat_pool_re),
     (IP_NAT_INSIDE_SOURCE_STATIC_RE, ip_nat_inside_source_static_re),
+    (SMTP_SERVER_RE, smtp_server_re),
     (SUBNET_WITH_MASK_RE, subnet_with_mask_re),
     (SUBNET_RE, subnet_re),
 )
