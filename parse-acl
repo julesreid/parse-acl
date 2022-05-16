@@ -108,6 +108,16 @@ NETWORK_OBJECT_NETWORK_RE = r'''
     (''' + IP_ADDR + r''')
 '''
 
+# Occurs under object network NAME
+RANGE_RE = r'''
+    ^
+    [ ]*
+    range[ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    (''' + IP_ADDR + r''')
+'''
+
 ROUTE_RE = r'''
     ^
     [ ]*
@@ -537,6 +547,14 @@ def extended_ignore_re(re_match: Match[str]) -> SrcDst:
     # Do not reset current_acl_name (parser is in middle of object)
     return None, None
 
+def range_re(re_match: Match[str]) -> SrcDst:
+    """Match a range statement"""
+    logging.debug("got RANGE_RE = %r", re_match.groups())
+    start = re_match.group(1)
+    end = re_match.group(2)             # Ignored for now
+    logging.debug("range %r %r", start, end)
+    return iptosubnet(start), iptosubnet('0.0.0.0/0')
+
 def route_re(re_match: Match[str]) -> SrcDst:
     """Match a route statement"""
     logging.debug("got ROUTE_RE = %r", re_match.groups())
@@ -642,6 +660,7 @@ def subnet_re(re_match: Match[str]) -> SrcDst:
 MATCH_RE_TABLE = (
     (ACL_HEADER, acl_header),
     (EXTENDED_IGNORE_RE, extended_ignore_re),
+    (RANGE_RE, range_re),
     (ROUTE_RE, route_re),
     (EXTENDED_ACL_RE, extended_acl_re),
     (EXTENDED_ASA_ACL_RE, extended_asa_acl_re),
