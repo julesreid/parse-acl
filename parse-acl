@@ -685,7 +685,7 @@ def subnet_re(re_match: Match[str]) -> SrcDst:
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
-MATCH_RE_TABLE = (
+MATCH_RE_TABLE_RAW = (
     (ACL_HEADER, acl_header),
     (EXTENDED_IGNORE_RE, extended_ignore_re),
     (RANGE_RE, range_re),
@@ -702,6 +702,9 @@ MATCH_RE_TABLE = (
     (SUBNET_RE, subnet_re),
 )
 
+MATCH_RE_TABLE = tuple((re.compile(re_pattern, re.X), re_func)
+                       for re_pattern, re_func in MATCH_RE_TABLE_RAW)
+
 def find_match(line: str) -> Optional[SrcDst]:
     """Iterate through all of the different regexes that can match
     a line in the configuration that has an IP address or a subnet.
@@ -713,7 +716,7 @@ def find_match(line: str) -> Optional[SrcDst]:
     subnets are set to None, which means to ignore the line."""
 
     for match_re, match_func in MATCH_RE_TABLE:
-        re_match = re.match(match_re, line, re.X)
+        re_match = match_re.match(line)
         if not re_match:
             continue
         src, dst = match_func(re_match)
