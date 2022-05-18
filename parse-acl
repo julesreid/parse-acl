@@ -554,6 +554,7 @@ def getoptions() -> argparse.Namespace:
 def acl_header(re_match: Match[str]) -> SrcDst:
     """Match the header of a standard or extended ACL"""
     logging.debug("got ACL_HEADER = %r", re_match.groups())
+    # Possible to use group(1) here if just the ACL name is wanted
     return re_match.group(0), None
 
 def extended_ignore_re(re_match: Match[str]) -> SrcDst:
@@ -745,7 +746,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
             continue
         if isinstance(src, str):
             # New header for network object
-            current_acl_name = line         # Possible to use src here instead
+            current_acl_name = src
             current_acl_line = line_num
             continue
         assert isinstance(src, Subnet)
