@@ -64,7 +64,7 @@ IP_ADDR = IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET
 SUBNET_WITH_MASK_RE = r'''
     (''' + IP_ADDR + r''')
     (?:
-	[ ]netmask
+        [ ]netmask
     )?
     [ ]
     (''' + IP_ADDR + r''')
@@ -185,9 +185,9 @@ SMTP_SERVER_RE = r'''
 ACL_HEADER = r'''
     ^
     (?:
-	ip[ ]access-list[ ](?:standard|extended)
-	| object(?:-group)?[ ]network
-	| interface
+        ip[ ]access-list[ ](?:standard|extended)
+        | object(?:-group)?[ ]network
+        | interface
     )
     [ ](\S+)
 '''
@@ -216,11 +216,11 @@ STANDARD_ACL_RE = r'''
     [ ]
     (permit|deny)[ ]
     (
-	any
-	| (''' + IP_ADDR + r''')
-	  (?:
-	      [ ] (''' + IP_ADDR + r''')
-	  )?
+        any
+        | (''' + IP_ADDR + r''')
+          (?:
+              [ ] (''' + IP_ADDR + r''')
+          )?
     )
 '''
 
@@ -288,13 +288,13 @@ EXTENDED_ASA_ACL_RE = r'''
 
 EXTENDED_IGNORE_RE = r'''
     (?:
-	(?: access-list[ ]\d+ )? [ ] (?:dynamic|evaluate|remark)[ ]
-	| [ ]description[ ]
-	| [ ]port-object[ ]
-	| [ ]group-object[ ]
-	| [ ]vlan[ ]
-	| [ ]nameif[ ]
-	| [ ]security-level[ ]
+        (?: access-list[ ]\d+ )? [ ] (?:dynamic|evaluate|remark)[ ]
+        | [ ]description[ ]
+        | [ ]port-object[ ]
+        | [ ]group-object[ ]
+        | [ ]vlan[ ]
+        | [ ]nameif[ ]
+        | [ ]security-level[ ]
     )
 '''
 
