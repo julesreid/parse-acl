@@ -131,11 +131,6 @@ ROUTE_RE = r'''
     (''' + IP_ADDR + r''')
     [ ]
     (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    \S+
-    $
 '''
 
 IP_NAT_POOL_RE = r'''
@@ -599,8 +594,7 @@ def route_re(re_match: Match[str], lastidx: int) -> SrcDst:
     logging.debug("got ROUTE_RE = %r", re_match.group(lastidx))
     src = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
-    dst = re_match.group(lastidx + 3)             # Ignored for now
-    logging.debug("route %r %r %r", src, msk, dst)
+    logging.debug("route %r %r", src, msk)
     return addrmasktosubnet(src, msk), iptosubnet('0.0.0.0/0')
 
 def handle_extended_acl(re_match: Match[str], lastidx: int,
