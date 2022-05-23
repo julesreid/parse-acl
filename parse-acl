@@ -726,7 +726,7 @@ MATCH_RE_STR = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
                         for re_str, re_func in MATCH_RE_TABLE_RAW.items())
 MATCH_RE = re.compile(MATCH_RE_STR, re.X)
 
-def find_match(line: str) -> Optional[SrcDst]:
+def find_regex(line: str) -> Optional[SrcDst]:
     """Iterate through all of the different regexes that can match
     a line in the configuration that has an IP address or a subnet.
     If a match is found, return the source and destination subnets
@@ -759,9 +759,9 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
     for line_num, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
-        retval = find_match(line)
+        retval = find_regex(line)
         if retval is None:
-            logging.debug("find_match() found no match at all")
+            logging.debug("find_regex() found no match at all")
             current_acl_name = None
             continue
         src, dst = retval
