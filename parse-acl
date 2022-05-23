@@ -134,6 +134,7 @@ ROUTE_RE = r'''
 '''
 
 IP_NAT_POOL_RE = r'''
+    ^
     [ ]*
     ip[ ]nat[ ]pool[ ]
     \S+[ ]
@@ -146,6 +147,7 @@ IP_NAT_POOL_RE = r'''
 '''
 
 IP_NAT_INSIDE_SOURCE_STATIC_RE = r'''
+    ^
     [ ]*
     ip[ ]nat[ ]inside[ ]source[ ]static[ ]
     (''' + IP_ADDR + r''')
@@ -161,6 +163,7 @@ IP_NAT_INSIDE_SOURCE_STATIC_RE = r'''
 # https://docs.python.org/3/library/re.html#re.Match.group
 #
 SMTP_SERVER_RE = r'''
+    ^
     [ ]*
     smtp-server[ ]
           (''' + IP_ADDR + r''')
@@ -205,6 +208,8 @@ ACL_HEADER = r'''
 
 # $1 = permit/deny, $2 = any or IP and mask, $3 == IP, $4 = subnet mask or None
 STANDARD_ACL_RE = r'''
+    ^
+    [ ]*
     (?:
         access-list[ ]\d+
     )?
@@ -238,6 +243,8 @@ STANDARD_ACL_RE = r'''
 #  permit ip any any
 
 EXTENDED_ACL_RE = r'''
+    ^
+    [ ]*
     (?:
         access-list[ ]\d+
     )?
@@ -263,6 +270,8 @@ EXTENDED_ACL_RE = r'''
 #             permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
 
 EXTENDED_ASA_ACL_RE = r'''
+    ^
+    [ ]*
     access-list[ ]
     \S+[ ]
     extended[ ]
@@ -282,6 +291,8 @@ EXTENDED_ASA_ACL_RE = r'''
 '''
 
 EXTENDED_IGNORE_RE = r'''
+    ^
+    [ ]*
     (?:
         (?: access-list[ ]\d+ )? [ ] (?:dynamic|evaluate|remark)[ ]
         | [ ]description[ ]
@@ -290,6 +301,7 @@ EXTENDED_IGNORE_RE = r'''
         | [ ]vlan[ ]
         | [ ]nameif[ ]
         | [ ]security-level[ ]
+        | [ ]mac-address[ ]
     )
 '''
 
