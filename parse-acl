@@ -323,10 +323,9 @@ def iptosubnet(ip: str) -> Subnet:
     parts = ip.split('/')
     if len(parts) == 1:
         return Subnet(ip=iptoint(parts[0]))
-    elif len(parts) == 2:
+    if len(parts) == 2:
         return Subnet(ip=iptoint(parts[0]), prefix=int(parts[1]))
-    else:
-        raise SyntaxError('subnet must have zero or one slashes')
+    raise SyntaxError('subnet must have zero or one slashes')
 
 def subnettoip(subnet: Subnet) -> str:
     """Convert the internal Subnet format into a string with an IP address
@@ -797,7 +796,8 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
                       'current_acl_line = %r, '
                       'last_acl_name = %r',
                       current_acl_name, current_acl_line, last_acl_name)
-        logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r', src, srcmatch, dst, dstmatch)
+        logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
+                      src, srcmatch, dst, dstmatch)
         # See if the src/dst from the config matches srcmatch/dstmatch
         if (match_subnet_prefixrange(src, srcmatch) and
                 match_subnet_prefixrange(dst, dstmatch)):
