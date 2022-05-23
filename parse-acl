@@ -680,13 +680,13 @@ def network_object_network_re(re_match: Match[str], lastidx: int) -> SrcDst:
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
-    # Ignore re_match.group(2) for now
+    # Ignore re_match.group(lastidx + 2) for now
     return handle_subnet(re_match.group(lastidx + 1), re_match.group(lastidx + 3))
 
 def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the IP_NAT_INSIDE_SOURCE_STATIC_RE regex"""
     logging.debug("got IP_NAT_INSIDE_SOURCE_STATIC_RE = %r", re_match.group(lastidx))
-    # Ignore re_match.group(2) for now
+    # Ignore re_match.group(lastidx + 2) for now
     src = iptosubnet(re_match.group(lastidx + 1))
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
@@ -707,7 +707,7 @@ def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
 def subnet_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the SUBNET_RE regex"""
     logging.debug("got SUBNET_RE = %r", re_match.group(lastidx))
-    src = iptosubnet(re_match.group(lastidx + 1))
+    src = iptosubnet(re_match.group(lastidx + 0))
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
