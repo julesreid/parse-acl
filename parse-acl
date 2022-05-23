@@ -729,7 +729,7 @@ MATCH_RE_TABLE_RAW = {
 }
 
 MATCH_RE_STR = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
-                        for re_str, re_func in MATCH_RE_TABLE_RAW.items())
+                        for re_str in MATCH_RE_TABLE_RAW)
 MATCH_RE = re.compile(MATCH_RE_STR, re.X)
 
 def find_regex(line: str) -> Optional[SrcDst]:
@@ -747,11 +747,22 @@ def find_regex(line: str) -> Optional[SrcDst]:
         assert bool(re_match)
         assert re_match.lastgroup in MATCH_RE_TABLE_RAW
         assert isinstance(re_match.lastindex, int)
-        logging.debug('MATCH_RE_TABLE_RAW[re_match.lastgroup] = %r', MATCH_RE_TABLE_RAW[re_match.lastgroup])
-        result = MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match, re_match.lastindex)
-        logging.debug('result = %r', result)
+        logging.debug('re_match.lastgroup = %r', re_match.lastgroup)
+        logging.debug('re_match.lastindex = %r', re_match.lastindex)
+        logging.debug('MATCH_RE_TABLE_RAW[re_match.lastgroup] = %r',
+                      MATCH_RE_TABLE_RAW[re_match.lastgroup])
+        logging.debug('re_match.group(lastindex + 0) = %r',
+                      re_match.group(re_match.lastindex + 0))
+        logging.debug('re_match.group(lastindex + 1) = %r',
+                      re_match.group(re_match.lastindex + 1))
+        logging.debug('re_match.group(lastindex + 2) = %r',
+                      re_match.group(re_match.lastindex + 2))
+
+        src, dst = MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
+                                                          re_match.lastindex)
+        logging.debug("src = %r, dst = %r", src, dst)
         # Eventually will have yield here to return multiple results
-        return result
+        return src, dst
 
     return None
 
