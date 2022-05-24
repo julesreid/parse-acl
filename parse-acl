@@ -598,15 +598,19 @@ def range_re(re_match: Match[str], lastidx: int) -> SrcDst:
     start = re_match.group(lastidx + 1)
     end = re_match.group(lastidx + 2)             # Ignored for now
     logging.debug("range %r %r", start, end)
-    return iptosubnet(start), iptosubnet('0.0.0.0/0')
+    src = iptosubnet(start)
+    dst = iptosubnet('0.0.0.0/0')
+    return src, dst
 
 def route_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match a route statement"""
     logging.debug("got ROUTE_RE = %r", re_match.group(lastidx))
-    src = re_match.group(lastidx + 1)
+    net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
-    logging.debug("route %r %r", src, msk)
-    return addrmasktosubnet(src, msk), iptosubnet('0.0.0.0/0')
+    logging.debug("route %r %r", net, msk)
+    src = addrmasktosubnet(net, msk)
+    dst = iptosubnet('0.0.0.0/0')
+    return src, dst
 
 def handle_extended_acl(re_match: Match[str], lastidx: int,
                         wildcard: bool) -> SrcDst:
@@ -664,23 +668,24 @@ def network_object_host_re(re_match: Match[str], lastidx: int) -> SrcDst:
     dst = iptosubnet("0.0.0.0/0")
     return src, dst
 
-def handle_subnet(straddr: str, strmask: str) -> SrcDst:
-    """Handle configuration lines that have an IP address and a
-    separate network mask (not a prefix)."""
-    src = addrmasktosubnet(straddr, strmask)
-    dst = iptosubnet("0.0.0.0/0")
-    return src, dst
-
 def network_object_network_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the NETWORK_OBJECT_NETWORK_RE regex"""
     logging.debug("got NETWORK_OBJECT_NETWORK_RE = %r", re_match.group(lastidx))
-    return handle_subnet(re_match.group(lastidx + 1), re_match.group(lastidx + 2))
+    net = re_match.group(lastidx + 1)
+    msk = re_match.group(lastidx + 2)
+    src = addrmasktosubnet(net, msk)
+    dst = iptosubnet('0.0.0.0/0')
+    return src, dst
 
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
     # Ignore re_match.group(lastidx + 2) for now
-    return handle_subnet(re_match.group(lastidx + 1), re_match.group(lastidx + 3))
+    net = re_match.group(lastidx + 1)
+    msk = re_match.group(lastidx + 3)
+    src = addrmasktosubnet(net, msk)
+    dst = iptosubnet('0.0.0.0/0')
+    return src, dst
 
 def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the IP_NAT_INSIDE_SOURCE_STATIC_RE regex"""
@@ -701,7 +706,11 @@ def smtp_server_re(re_match: Match[str], lastidx: int) -> SrcDst:
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
-    return handle_subnet(re_match.group(lastidx + 1), re_match.group(lastidx + 2))
+    net = re_match.group(lastidx + 1)
+    msk = re_match.group(lastidx + 2)
+    src = addrmasktosubnet(net, msk)
+    dst = iptosubnet('0.0.0.0/0')
+    return src, dst
 
 def subnet_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the SUBNET_RE regex"""
