@@ -836,9 +836,8 @@ def main() -> None:
     dstmatch = args.destination
 
     # Set up logging
-    logging.basicConfig(level=args.log_level,
-                        format="%(levelname)s:%(funcName)s:"
-                               "%(lineno)d:%(message)s")
+    log_format = "%(levelname)s:%(funcName)s:%(lineno)d:%(message)s"
+    logging.basicConfig(level=args.log_level, format=log_format)
 
     if args.test:
         assert isinstance(args.test, list)
