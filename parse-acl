@@ -54,7 +54,7 @@ class PrefixRange(NamedTuple):
 # of the header.  In the case that a line should be ignored without
 # resetting the header state variables, it is the tuple (None, None).
 #
-SrcDst = Tuple[Union[Subnet, str, None], Optional[Subnet]]
+SrcDst = Tuple[Union[Subnet, str, None], Union[Subnet, None]]
 
 ### IP address, subnet and prefix list matching
 
