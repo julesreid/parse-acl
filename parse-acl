@@ -176,6 +176,16 @@ SMTP_SERVER_RE = r'''
     (?:[ ](''' + IP_ADDR + r'''))?
 '''
 
+NETWORK_RE = r'''
+    ^
+    [ ]*
+    network[ ]
+    (''' + IP_ADDR + r''')
+    [ ]
+    mask[ ]
+    (''' + IP_ADDR + r''')
+'''
+
 ### ACL matching
 
 # ip access-list extended network-services-in
@@ -703,6 +713,15 @@ def smtp_server_re(re_match: Match[str], lastidx: int) -> SrcDst:
     dst = ANY
     return src, dst
 
+def network_re(re_match: Match[str], lastidx: int) -> SrcDst:
+    """Match the NETWORK_RE regex"""
+    logging.debug("got NETWORK_RE = %r", re_match.group(lastidx))
+    net = re_match.group(lastidx + 1)
+    msk = re_match.group(lastidx + 2)
+    src = addrmasktosubnet(net, msk)
+    dst = ANY
+    return src, dst
+
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
@@ -732,6 +751,7 @@ MATCH_RE_TABLE_RAW = {
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "IP_NAT_INSIDE_SOURCE_STATIC_RE": ip_nat_inside_source_static_re,
     "SMTP_SERVER_RE": smtp_server_re,
+    "NETWORK_RE": network_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
 }
