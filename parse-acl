@@ -327,6 +327,8 @@ def iptosubnet(ip: str) -> Subnet:
         return Subnet(ip=iptoint(parts[0]), prefix=int(parts[1]))
     raise SyntaxError('subnet must have zero or one slashes')
 
+ANY = iptosubnet("0.0.0.0/0")
+
 def subnettoip(subnet: Subnet) -> str:
     """Convert the internal Subnet format into a string with an IP address
     and prefix"""
@@ -414,7 +416,7 @@ def range_to_net(re_range: str, re_host: Optional[str],
         net = iptoint(re_host)
         mask = 32
     elif re_range in ("any", "any4"):
-        net, mask = iptosubnet("0.0.0.0/0")
+        net, mask = ANY
     else:
         net = iptoint(re_net)
         if usewild:
@@ -544,16 +546,14 @@ def getoptions() -> argparse.Namespace:
     parser.add_argument('-s', '--source',
                         help='source prefix range to match in configuration',
                         # Match anything by default
-                        default=PrefixRange(iptosubnet("0.0.0.0/0"),
-                                            ge=0, le=32),
+                        default=PrefixRange(ANY, ge=0, le=32),
                         action=PrefixRangeAction,
                         metavar='SOURCE')
     parser.add_argument('-d', '--destination',
                         help='destination prefix range to match in '
                              'configuration',
                         # Match anything by default
-                        default=PrefixRange(iptosubnet("0.0.0.0/0"),
-                                            ge=0, le=32),
+                        default=PrefixRange(ANY, ge=0, le=32),
                         action=PrefixRangeAction,
                         metavar='DESTINATION')
     parser.add_argument('-x', '--reverse',
@@ -599,7 +599,7 @@ def range_re(re_match: Match[str], lastidx: int) -> SrcDst:
     end = re_match.group(lastidx + 2)             # Ignored for now
     logging.debug("range %r %r", start, end)
     src = iptosubnet(start)
-    dst = iptosubnet('0.0.0.0/0')
+    dst = ANY
     return src, dst
 
 def route_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -609,7 +609,7 @@ def route_re(re_match: Match[str], lastidx: int) -> SrcDst:
     msk = re_match.group(lastidx + 2)
     logging.debug("route %r %r", net, msk)
     src = addrmasktosubnet(net, msk)
-    dst = iptosubnet('0.0.0.0/0')
+    dst = ANY
     return src, dst
 
 def handle_extended_acl(re_match: Match[str], lastidx: int,
@@ -658,14 +658,14 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> SrcDst:
         src = range_to_net(re_match.group(lastidx + 2), None,
                            re_match.group(lastidx + 3), re_match.group(lastidx + 4))
         logging.debug("baz = %r", src)
-    dst = iptosubnet("0.0.0.0/0")
+    dst = ANY
     return src, dst
 
 def network_object_host_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the NETWORK_OBJECT_HOST_RE regex"""
     logging.debug("got NETWORK_OBJECT_HOST_RE = %r", re_match.group(lastidx))
     src = iptosubnet(re_match.group(lastidx + 1))
-    dst = iptosubnet("0.0.0.0/0")
+    dst = ANY
     return src, dst
 
 def network_object_network_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -674,7 +674,7 @@ def network_object_network_re(re_match: Match[str], lastidx: int) -> SrcDst:
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
-    dst = iptosubnet('0.0.0.0/0')
+    dst = ANY
     return src, dst
 
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -684,7 +684,7 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> SrcDst:
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 3)
     src = addrmasktosubnet(net, msk)
-    dst = iptosubnet('0.0.0.0/0')
+    dst = ANY
     return src, dst
 
 def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -692,7 +692,7 @@ def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> SrcDst
     logging.debug("got IP_NAT_INSIDE_SOURCE_STATIC_RE = %r", re_match.group(lastidx))
     # Ignore re_match.group(lastidx + 2) for now
     src = iptosubnet(re_match.group(lastidx + 1))
-    dst = iptosubnet("0.0.0.0/0")
+    dst = ANY
     return src, dst
 
 def smtp_server_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -700,7 +700,7 @@ def smtp_server_re(re_match: Match[str], lastidx: int) -> SrcDst:
     logging.debug("got SMTP_SERVER_RE = %r", re_match.group(lastidx))
     # Ignore multiple matches for now
     src = iptosubnet(re_match.group(lastidx + 1))
-    dst = iptosubnet("0.0.0.0/0")
+    dst = ANY
     return src, dst
 
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
@@ -709,14 +709,14 @@ def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
-    dst = iptosubnet('0.0.0.0/0')
+    dst = ANY
     return src, dst
 
 def subnet_re(re_match: Match[str], lastidx: int) -> SrcDst:
     """Match the SUBNET_RE regex"""
     logging.debug("got SUBNET_RE = %r", re_match.group(lastidx))
     src = iptosubnet(re_match.group(lastidx + 0))
-    dst = iptosubnet("0.0.0.0/0")
+    dst = ANY
     return src, dst
 
 MATCH_RE_TABLE_RAW = {
