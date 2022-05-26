@@ -26,7 +26,8 @@ import socket
 import struct
 import argparse
 import logging
-from typing import Optional, NamedTuple, Union, Sequence, Any, Match, Tuple
+from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
+                    Iterable, Tuple)
 
 # Set some types used for holding data
 #
@@ -55,6 +56,11 @@ class PrefixRange(NamedTuple):
 # resetting the header state variables, it is the tuple (None, None).
 #
 SrcDst = Tuple[Union[Subnet, str, None], Union[Subnet, None]]
+
+# Return type for routines that return a SrcDst or a position in the
+# string to restart the search using finditer().
+#
+SrcDstPos = Union[SrcDst, int]
 
 ### IP address, subnet and prefix list matching
 
@@ -489,7 +495,7 @@ def normalized(subnet: Subnet) -> bool:
     length = subnet.prefix
     return ip & maskof(length) == ip
 
-def addrmasktosubnet(straddr: str, strmask: str) -> Subnet:
+def addrmasktosubnet(straddr: str, strmask: str) -> Optional[Subnet]:
     """Convert an IP address and a separate IP address used as
     a network mask into a subnet object.  For instance, convert
     "192.168.100.0", "255.255.255.0" into 192.168.100.0/24."""
@@ -501,7 +507,9 @@ def addrmasktosubnet(straddr: str, strmask: str) -> Subnet:
     logging.debug("addr = %r", addr)
     logging.debug("mask = %r", mask)
     preflen = netmasktoprefix(mask.ip)
-    assert maskof(preflen) == mask.ip
+    if maskof(preflen) != mask.ip:
+        logging.debug('invalid mask for addr, returning None')
+        return None
     logging.debug("preflen = %r", preflen)
     subnet = Subnet(ip=addr.ip, prefix=preflen)
     logging.debug("subnet = %r", subnet)
@@ -586,13 +594,13 @@ def getoptions() -> argparse.Namespace:
 
 # Parse routines
 
-def acl_header(re_match: Match[str], lastidx: int) -> SrcDst:
+def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the header of a standard or extended ACL"""
     logging.debug("got ACL_HEADER = %r", re_match.group(lastidx))
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
-    return re_match.group(lastidx + 0), None
+    yield re_match.group(lastidx + 0), None
 
-def extended_ignore_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def extended_ignore_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match a line that is part of an object, but should be ignored.
     The main purpose of this is to make sure that current_acl_name
     stays set to the same value while parsing the object.  Once a
@@ -600,9 +608,9 @@ def extended_ignore_re(re_match: Match[str], lastidx: int) -> SrcDst:
     to another value or None."""
     logging.debug("got EXTENDED_IGNORE_RE = %r", re_match.group(lastidx))
     # Do not reset current_acl_name (parser is in middle of object)
-    return None, None
+    yield None, None
 
-def range_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def range_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match a range statement"""
     logging.debug("got RANGE_RE = %r", re_match.group(lastidx))
     start = re_match.group(lastidx + 1)
@@ -610,17 +618,19 @@ def range_re(re_match: Match[str], lastidx: int) -> SrcDst:
     logging.debug("range %r %r", start, end)
     src = iptosubnet(start)
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def route_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def route_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match a route statement"""
     logging.debug("got ROUTE_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     logging.debug("route %r %r", net, msk)
     src = addrmasktosubnet(net, msk)
+    if src is None:
+        raise ValueError('invalid mask for address')
     dst = ANY
-    return src, dst
+    yield src, dst
 
 def handle_extended_acl(re_match: Match[str], lastidx: int,
                         wildcard: bool) -> SrcDst:
@@ -646,17 +656,17 @@ def handle_extended_acl(re_match: Match[str], lastidx: int,
     logging.debug("dst = %r", dst)
     return src, dst
 
-def extended_acl_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ACL_RE regex"""
     logging.debug("got EXTENDED_ACL_RE = %r", re_match.group(lastidx))
-    return handle_extended_acl(re_match, lastidx, wildcard=True)
+    yield handle_extended_acl(re_match, lastidx, wildcard=True)
 
-def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ASA_ACL_RE regex"""
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
-    return handle_extended_acl(re_match, lastidx, wildcard=False)
+    yield handle_extended_acl(re_match, lastidx, wildcard=False)
 
-def standard_acl_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
     logging.debug("got STANDARD_ACL_RE = %r", re_match.group(lastidx))
     # XXX ugly code
@@ -669,74 +679,90 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> SrcDst:
                            re_match.group(lastidx + 3), re_match.group(lastidx + 4))
         logging.debug("baz = %r", src)
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def network_object_host_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def network_object_host_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the NETWORK_OBJECT_HOST_RE regex"""
     logging.debug("got NETWORK_OBJECT_HOST_RE = %r", re_match.group(lastidx))
     src = iptosubnet(re_match.group(lastidx + 1))
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def network_object_network_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def network_object_network_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the NETWORK_OBJECT_NETWORK_RE regex"""
     logging.debug("got NETWORK_OBJECT_NETWORK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
+    if src is None:
+        raise ValueError('invalid mask for address')
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
     # Ignore re_match.group(lastidx + 2) for now
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 3)
     src = addrmasktosubnet(net, msk)
+    if src is None:
+        raise ValueError('invalid mask for address')
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_INSIDE_SOURCE_STATIC_RE regex"""
     logging.debug("got IP_NAT_INSIDE_SOURCE_STATIC_RE = %r", re_match.group(lastidx))
     # Ignore re_match.group(lastidx + 2) for now
     src = iptosubnet(re_match.group(lastidx + 1))
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def smtp_server_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def smtp_server_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SMTP_SERVER_RE regex"""
     logging.debug("got SMTP_SERVER_RE = %r", re_match.group(lastidx))
     # Ignore multiple matches for now
     src = iptosubnet(re_match.group(lastidx + 1))
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def network_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def network_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the NETWORK_RE regex"""
     logging.debug("got NETWORK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
     dst = ANY
-    return src, dst
+    yield src, dst
 
-def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> SrcDst:
+def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDstPos]:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
-    dst = ANY
-    return src, dst
+    if src is None:
+        subnet = list(subnet_re(re_match, lastidx + 1))
+        assert len(subnet) == 1
+        logging.debug('successful subnet_re() = %r', subnet[0])
+        yield subnet[0]
 
-def subnet_re(re_match: Match[str], lastidx: int) -> SrcDst:
+        new_index = lastidx + 2
+        new_startpos = re_match.start(new_index)
+        logging.debug('new_index = %r', new_index)
+        logging.debug('re_match.start(new_index) = %r', new_startpos)
+        yield new_startpos
+    else:
+        dst = ANY
+        yield src, dst
+
+def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SUBNET_RE regex"""
     logging.debug("got SUBNET_RE = %r", re_match.group(lastidx))
     src = iptosubnet(re_match.group(lastidx + 0))
     dst = ANY
-    return src, dst
+    yield src, dst
 
 MATCH_RE_TABLE_RAW = {
     "ACL_HEADER": acl_header,
@@ -760,18 +786,19 @@ MATCH_RE_STR = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
                         for re_str in MATCH_RE_TABLE_RAW)
 MATCH_RE = re.compile(MATCH_RE_STR, re.X)
 
-def find_regex(line: str) -> Optional[SrcDst]:
-    """Iterate through all of the different regexes that can match
-    a line in the configuration that has an IP address or a subnet.
-    If a match is found, return the source and destination subnets
-    found.  If only a source subnet was found, the destination will
-    be 0.0.0.0/0.  As a special case, if source address is a string
-    instead, it means a header with an object name was matched.
-    Another special case is when both the source and destination
-    subnets are set to None, which means to ignore the line."""
+def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDstPos]:
+    """Given an iterable of regex matches (from finditer()), dispatch
+    to the helper functions based on the named group that matches.
+    This is similar to the parser found in the Python documentation.
+    lastgroup is the name of the group that matched, and lastindex is
+    the index into the groups where it starts.  The helper functions
+    then return an iterable of SrcDst objects, or in the case of
+    subnet_with_mask_re(), possibly an integer which indicates the
+    position to restart the search."""
 
-    for i, re_match in enumerate(MATCH_RE.finditer(line)):
+    for i, re_match in enumerate(n):
         logging.debug('i = %r, re_match = %r', i, re_match)
+
         assert bool(re_match)
         assert re_match.lastgroup in MATCH_RE_TABLE_RAW
         assert isinstance(re_match.lastindex, int)
@@ -786,13 +813,41 @@ def find_regex(line: str) -> Optional[SrcDst]:
         logging.debug('re_match.group(lastindex + 2) = %r',
                       re_match.group(re_match.lastindex + 2))
 
-        src, dst = MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
+        yield from MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
                                                           re_match.lastindex)
-        logging.debug("src = %r, dst = %r", src, dst)
-        # Eventually will have yield here to return multiple results
-        return src, dst
 
-    return None
+def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
+    """Iterate through all of the different patterns that can be
+    found in a line in the configuration that match an IP address or
+    a subnet.  The patterns are dispatched based on the named group
+    to helper functions which extract more information.
+
+    If a match is found, return the source and destination subnets
+    found.  If only a source subnet was found, the destination will
+    be 0.0.0.0/0.  As a special case, if source address is a string
+    instead, it means a header with an object name was matched.
+    Another special case is when both the source and destination
+    subnets are set to None, which means to ignore the line and don't
+    reset the state variables keeping track of the headers."""
+
+    startpos = 0
+    got = False
+    while True:
+        logging.debug('finditer with pos = %r', startpos)
+        n = MATCH_RE.finditer(line, pos=startpos)
+        for result in processgroups(n):
+            if isinstance(result, int):
+                logging.debug('result is int = %r', result)
+                startpos = result
+                break
+            assert isinstance(result, tuple)
+            logging.debug('result is obj, yielding')
+            got = True
+            yield result
+        else:
+            if not got:
+                yield None
+            return
 
 def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
     """Parse the configuration and search for lines which match ACLs,
@@ -804,42 +859,44 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
     for line_num, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
-        retval = find_regex(line)
-        if retval is None:
-            logging.debug("find_regex() found no match at all")
-            current_acl_name = None
-            continue
-        src, dst = retval
-        if src is None:
-            # Ignored line
-            continue
-        if isinstance(src, str):
-            # New header for network object
-            current_acl_name = src
-            current_acl_line = line_num
-            continue
-        assert isinstance(src, Subnet)
-        assert isinstance(dst, Subnet)
+        for retval in find_regex(line):
+            if retval is None:
+                logging.debug("find_regex() found no match at all")
+                current_acl_name = None
+                break
+            src, dst = retval
+            if src is None:
+                # Ignored line
+                logging.debug("find_regex() found ignored line")
+                break
+            if isinstance(src, str):
+                logging.debug("find_regex() found new header")
+                # New header for network object
+                current_acl_name = src
+                current_acl_line = line_num
+                break
+            assert isinstance(src, Subnet)
+            assert isinstance(dst, Subnet)
 
-        logging.debug('current_acl_name = %r, '
-                      'current_acl_line = %r, '
-                      'last_acl_name = %r',
-                      current_acl_name, current_acl_line, last_acl_name)
-        logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
-                      src, srcmatch, dst, dstmatch)
-        # See if the src/dst from the config matches srcmatch/dstmatch
-        if (match_subnet_prefixrange(src, srcmatch) and
-                match_subnet_prefixrange(dst, dstmatch)):
-            logging.debug('got match')
-            if current_acl_name and (last_acl_name is None
-                                     or last_acl_name != current_acl_name):
-                # Header for the ACL changed, so print it now
-                assert current_acl_line is not None
-                print("%5d %s" % (current_acl_line, current_acl_name))
-                last_acl_name = current_acl_name
-            print("%5d %s" % (line_num, line))
-        else:
-            logging.debug('no match')
+            logging.debug('current_acl_name = %r, '
+                          'current_acl_line = %r, '
+                          'last_acl_name = %r',
+                          current_acl_name, current_acl_line, last_acl_name)
+            logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
+                          src, srcmatch, dst, dstmatch)
+            # See if the src/dst from the config matches srcmatch/dstmatch
+            if (match_subnet_prefixrange(src, srcmatch) and
+                    match_subnet_prefixrange(dst, dstmatch)):
+                logging.debug('got match')
+                if current_acl_name and (last_acl_name is None
+                                         or last_acl_name != current_acl_name):
+                    # Header for the ACL changed, so print it now
+                    assert current_acl_line is not None
+                    print("%5d %s" % (current_acl_line, current_acl_name))
+                    last_acl_name = current_acl_name
+                print("%5d %s" % (line_num, line))
+            else:
+                logging.debug('no match')
 
 ### Main program
 
