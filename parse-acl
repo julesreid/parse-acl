@@ -70,7 +70,7 @@ IP_ADDR = IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET
 SUBNET_WITH_MASK_RE = r'''
     (''' + IP_ADDR + r''')
     (?:
-        [ ]netmask
+        [ ](?:net)?mask
     )?
     [ ]
     (''' + IP_ADDR + r''')
@@ -98,47 +98,6 @@ NETWORK_OBJECT_RE = r'''
     [ ]
 '''
 
-NETWORK_OBJECT_HOST_RE = r'''
-    ^
-    [ ]*
-    (?:
-    ''' + NETWORK_OBJECT_RE + '''
-    )?
-    host
-    [ ]
-    (''' + IP_ADDR + r''')
-'''
-
-NETWORK_OBJECT_NETWORK_RE = r'''
-    ^
-    [ ]*
-    ''' + NETWORK_OBJECT_RE + r'''
-    (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-'''
-
-# Occurs under object network NAME
-RANGE_RE = r'''
-    ^
-    [ ]*
-    range[ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-'''
-
-ROUTE_RE = r'''
-    ^
-    [ ]*
-    route[ ]
-    \S+
-    [ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-'''
-
 IP_NAT_POOL_RE = r'''
     ^
     [ ]*
@@ -149,46 +108,6 @@ IP_NAT_POOL_RE = r'''
     (''' + IP_ADDR + r''')
     [ ]
     netmask[ ]
-    (''' + IP_ADDR + r''')
-'''
-
-IP_NAT_INSIDE_SOURCE_STATIC_RE = r'''
-    ^
-    [ ]*
-    ip[ ]nat[ ]inside[ ]source[ ]static[ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-'''
-
-# Limit of 8 IP addresses due to the way the matcher works.  Ideally,
-# there would be one regex for the continuation IP addresses, but Python
-# only returns the last match of a group which matches multiple times.
-#
-# See the documentation for group():
-# https://docs.python.org/3/library/re.html#re.Match.group
-#
-SMTP_SERVER_RE = r'''
-    ^
-    [ ]*
-    smtp-server[ ]
-          (''' + IP_ADDR + r''')
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-    (?:[ ](''' + IP_ADDR + r'''))?
-'''
-
-NETWORK_RE = r'''
-    ^
-    [ ]*
-    network[ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    mask[ ]
     (''' + IP_ADDR + r''')
 '''
 
@@ -610,28 +529,6 @@ def extended_ignore_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     # Do not reset current_acl_name (parser is in middle of object)
     yield None, None
 
-def range_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match a range statement"""
-    logging.debug("got RANGE_RE = %r", re_match.group(lastidx))
-    start = re_match.group(lastidx + 1)
-    end = re_match.group(lastidx + 2)             # Ignored for now
-    logging.debug("range %r %r", start, end)
-    src = iptosubnet(start)
-    dst = ANY
-    yield src, dst
-
-def route_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match a route statement"""
-    logging.debug("got ROUTE_RE = %r", re_match.group(lastidx))
-    net = re_match.group(lastidx + 1)
-    msk = re_match.group(lastidx + 2)
-    logging.debug("route %r %r", net, msk)
-    src = addrmasktosubnet(net, msk)
-    if src is None:
-        raise ValueError('invalid mask for address')
-    dst = ANY
-    yield src, dst
-
 def handle_extended_acl(re_match: Match[str], lastidx: int,
                         wildcard: bool) -> SrcDst:
     """Extract values from the various formats for an extended ACL.
@@ -681,24 +578,6 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     dst = ANY
     yield src, dst
 
-def network_object_host_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the NETWORK_OBJECT_HOST_RE regex"""
-    logging.debug("got NETWORK_OBJECT_HOST_RE = %r", re_match.group(lastidx))
-    src = iptosubnet(re_match.group(lastidx + 1))
-    dst = ANY
-    yield src, dst
-
-def network_object_network_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the NETWORK_OBJECT_NETWORK_RE regex"""
-    logging.debug("got NETWORK_OBJECT_NETWORK_RE = %r", re_match.group(lastidx))
-    net = re_match.group(lastidx + 1)
-    msk = re_match.group(lastidx + 2)
-    src = addrmasktosubnet(net, msk)
-    if src is None:
-        raise ValueError('invalid mask for address')
-    dst = ANY
-    yield src, dst
-
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
@@ -708,31 +587,6 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     src = addrmasktosubnet(net, msk)
     if src is None:
         raise ValueError('invalid mask for address')
-    dst = ANY
-    yield src, dst
-
-def ip_nat_inside_source_static_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the IP_NAT_INSIDE_SOURCE_STATIC_RE regex"""
-    logging.debug("got IP_NAT_INSIDE_SOURCE_STATIC_RE = %r", re_match.group(lastidx))
-    # Ignore re_match.group(lastidx + 2) for now
-    src = iptosubnet(re_match.group(lastidx + 1))
-    dst = ANY
-    yield src, dst
-
-def smtp_server_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the SMTP_SERVER_RE regex"""
-    logging.debug("got SMTP_SERVER_RE = %r", re_match.group(lastidx))
-    # Ignore multiple matches for now
-    src = iptosubnet(re_match.group(lastidx + 1))
-    dst = ANY
-    yield src, dst
-
-def network_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the NETWORK_RE regex"""
-    logging.debug("got NETWORK_RE = %r", re_match.group(lastidx))
-    net = re_match.group(lastidx + 1)
-    msk = re_match.group(lastidx + 2)
-    src = addrmasktosubnet(net, msk)
     dst = ANY
     yield src, dst
 
@@ -767,17 +621,10 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 MATCH_RE_TABLE_RAW = {
     "ACL_HEADER": acl_header,
     "EXTENDED_IGNORE_RE": extended_ignore_re,
-    "RANGE_RE": range_re,
-    "ROUTE_RE": route_re,
     "EXTENDED_ACL_RE": extended_acl_re,
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
     "STANDARD_ACL_RE": standard_acl_re,
-    "NETWORK_OBJECT_HOST_RE": network_object_host_re,
-    "NETWORK_OBJECT_NETWORK_RE": network_object_network_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
-    "IP_NAT_INSIDE_SOURCE_STATIC_RE": ip_nat_inside_source_static_re,
-    "SMTP_SERVER_RE": smtp_server_re,
-    "NETWORK_RE": network_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
 }
