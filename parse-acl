@@ -746,8 +746,11 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
                     print("%5d %s" % (current_acl_line, current_acl_name))
                     last_acl_name = current_acl_name
                 print("%5d %s" % (line_num, line))
-            else:
-                logging.debug('no match')
+                # Break now, otherwise the same line can be printed more
+                # than once
+                break
+            # No match this time, but iterate for more
+            logging.debug('no match')
 
 ### Main program
 
