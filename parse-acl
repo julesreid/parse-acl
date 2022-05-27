@@ -581,13 +581,17 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
-    # Ignore re_match.group(lastidx + 2) for now
-    net = re_match.group(lastidx + 1)
+    start = re_match.group(lastidx + 1)
+    end = re_match.group(lastidx + 2)
     msk = re_match.group(lastidx + 3)
-    src = addrmasktosubnet(net, msk)
+    src = addrmasktosubnet(start, msk)
     if src is None:
         raise ValueError('invalid mask for address')
     dst = ANY
+    yield src, dst
+    src = addrmasktosubnet(end, msk)
+    if src is None:
+        raise ValueError('invalid mask for address')
     yield src, dst
 
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDstPos]:
