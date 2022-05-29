@@ -67,6 +67,8 @@ SrcDstPos = Union[SrcDst, int]
 IP_OCTET = r'\b(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\b'
 IP_ADDR = IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET + r'\.' + IP_OCTET
 
+# $1 = IP subnet
+# $2 = IP net mask
 SUBNET_WITH_MASK_RE = r'''
     (''' + IP_ADDR + r''')
     (?:
@@ -76,7 +78,8 @@ SUBNET_WITH_MASK_RE = r'''
     (''' + IP_ADDR + r''')
 '''
 
-# $1 = IP address, $2 = prefix length or None
+# $1 = IP subnet
+# $2 = prefix length or None
 SUBNET_RE = r'''
     (''' + IP_ADDR + r''')
     (?:
@@ -84,6 +87,10 @@ SUBNET_RE = r'''
     )?
 '''
 
+# $1 = IP subnet
+# $2 = prefix length or None
+# $3 = ge value or None
+# $4 = le value or None
 PREFIX_RE = r'''
     ^
     ''' + SUBNET_RE + r'''
@@ -98,6 +105,9 @@ NETWORK_OBJECT_RE = r'''
     [ ]
 '''
 
+# $1 = starting IP address
+# $2 = ending IP address
+# $3 = net mask
 IP_NAT_POOL_RE = r'''
     ^
     [ ]*
@@ -141,7 +151,10 @@ ACL_HEADER = r'''
 #  permit 10.2.3.0 0.0.0.255
 #  permit 10.10.21.0 0.0.0.255
 
-# $1 = permit/deny, $2 = any or IP and mask, $3 == IP, $4 = subnet mask or None
+# $1 = permit/deny
+# $2 = any or IP and mask
+# $3 = IP
+# $4 = subnet mask or None
 STANDARD_ACL_RE = r'''
     ^
     [ ]*
@@ -204,6 +217,18 @@ EXTENDED_ACL_RE = r'''
 # access-list Internal_nat0_outbound extended
 #             permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
 
+# $1 = permit|deny
+# $2 = protocol
+# $3 = source IP address (all)
+# $4 = source host IP address
+# $5 = source subnet IP address
+# $6 = source netmask
+# $7 = source port
+# $8 = destination IP address (all)
+# $9 = destination host IP address
+# $10 = destination subnet IP address
+# $11 = destination netmask
+# $12 = destination port
 EXTENDED_ASA_ACL_RE = r'''
     ^
     [ ]*
@@ -341,7 +366,8 @@ def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
 # XXX redefine to make more sense (e.g., "host" only is used in extended
 # acls but not in standard acls)
 def range_to_net(re_range: str, re_host: Optional[str],
-                 re_net: str, re_mask: str, usewild: bool = True) -> Subnet:
+                 re_net: str, re_mask: Optional[str],
+                 usewild: bool = True) -> Subnet:
     """Given the parts of a regex matching an ACL in the text,
     convert it to a subnet.  If usewild is set, reverse the bits of
     the re_mask variable.  The regexes that are used in the matching
@@ -354,7 +380,9 @@ def range_to_net(re_range: str, re_host: Optional[str],
         net, mask = ANY
     else:
         net = iptoint(re_net)
-        if usewild:
+        if re_mask is None:
+            mask = 32
+        elif usewild:
             mask = netmasktoprefix(wildtonetmask(re_mask))
         else:
             mask = netmasktoprefix(iptoint(re_mask))
@@ -537,18 +565,17 @@ def handle_extended_acl(re_match: Match[str], lastidx: int,
 
     # XXX needs to work when both -s and -d specified (logical or)
     # XXX needs error checking
-    # XXX $7 and $12 are source or destination ports (if any)
     logging.debug("wildcard = %r", wildcard)
-    src = range_to_net(re_match.group(lastidx + 3), re_match.group(lastidx + 4),
-                       re_match.group(lastidx + 5), re_match.group(lastidx + 6),
+    src = range_to_net(re_range=re_match.group(lastidx + 3),
+                       re_host=re_match.group(lastidx + 4),
+                       re_net=re_match.group(lastidx + 5),
+                       re_mask=re_match.group(lastidx + 6),
                        usewild=wildcard)
     logging.debug("src = %r", src)
-    dst_range = re_match.group(lastidx + 8)
-    if dst_range is None:
-        dst_range = "any"
-    dst = range_to_net(dst_range,
-                       re_match.group(lastidx + 9), re_match.group(lastidx + 10),
-                       re_match.group(lastidx + 11),
+    dst = range_to_net(re_range=re_match.group(lastidx + 8),
+                       re_host=re_match.group(lastidx + 9),
+                       re_net=re_match.group(lastidx + 10),
+                       re_mask=re_match.group(lastidx + 11),
                        usewild=wildcard)
     logging.debug("dst = %r", dst)
     return src, dst
@@ -566,15 +593,11 @@ def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
     logging.debug("got STANDARD_ACL_RE = %r", re_match.group(lastidx))
-    # XXX ugly code
-    if re_match.group(lastidx + 4) is None:
-        src = range_to_net(re_match.group(lastidx + 2), None,
-                           re_match.group(lastidx + 3), "0.0.0.0")
-        logging.debug("biz = %r", src)
-    else:
-        src = range_to_net(re_match.group(lastidx + 2), None,
-                           re_match.group(lastidx + 3), re_match.group(lastidx + 4))
-        logging.debug("baz = %r", src)
+    src = range_to_net(re_range=re_match.group(lastidx + 2),
+                       re_host=None,
+                       re_net=re_match.group(lastidx + 3),
+                       re_mask=re_match.group(lastidx + 4))
+    logging.debug("src = %r", src)
     dst = ANY
     yield src, dst
 
