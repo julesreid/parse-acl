@@ -104,10 +104,16 @@ PREFIX_RE = r'''
     $
 '''
 
-NETWORK_OBJECT_RE = r'''
-    \b
-    network-object
+# $1 = object name
+NET_OR_GRP_OBJECT_RE = r'''
+    ^
+    [ ]*
+    (?:
+        group-object
+        |network-object[ ]object
+    )
     [ ]
+    (\S+)
 '''
 
 # $1 = starting IP address
@@ -263,7 +269,6 @@ EXTENDED_IGNORE_RE = r'''
         (?: access-list[ ]\d+ )? [ ] (?:dynamic|evaluate|remark)[ ]
         | [ ]description[ ]
         | [ ]port-object[ ]
-        | [ ]group-object[ ]
         | [ ]vlan[ ]
         | [ ]nameif[ ]
         | [ ]security-level[ ]
@@ -622,6 +627,27 @@ def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
     yield from handle_extended_acl(re_match, lastidx, wildcard=False)
 
+def net_or_grp_object_re(re_match: Match[str],
+                         lastidx: int) -> Iterable[SrcDst]:
+    """Match the NET_OR_GRP_OBJECT_RE regex"""
+
+    logging.debug("got NET_OR_GRP_OBJECT_RE = %r", re_match.group(lastidx))
+    # The problem here is that "group-object" can appear in any object
+    # type, including service or protocol.  We cannot tell because
+    # the current ACL is only stored in parse_config().  Instead,
+    # skip yielding any subnets if the object name doesn't exist in
+    # the dictionary.
+    key = re_match.group(lastidx + 1)
+    if key not in OBJECT_DICT:
+        return
+    # Any expansion here ends up in not only the original place where
+    # the subnet was defined, but also in any further expansions.
+    # That is, there is no need for recursion here.  This is because
+    # the IP subnet is added based on current_acl_obj in the main
+    # loop in parse_config().
+    for src in yield_object_subnets(key):
+        yield src, ANY
+
 def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
     logging.debug("got STANDARD_ACL_RE = %r", re_match.group(lastidx))
@@ -682,6 +708,7 @@ MATCH_RE_TABLE_RAW = {
     "EXTENDED_IGNORE_RE": extended_ignore_re,
     "EXTENDED_ACL_RE": extended_acl_re,
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
+    "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
     "STANDARD_ACL_RE": standard_acl_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
