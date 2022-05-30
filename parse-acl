@@ -26,8 +26,9 @@ import socket
 import struct
 import argparse
 import logging
+from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
-                    Iterable, Tuple)
+                    Iterable, Tuple, Dict, List)
 
 # Set some types used for holding data
 #
@@ -55,12 +56,16 @@ class PrefixRange(NamedTuple):
 # of the header.  In the case that a line should be ignored without
 # resetting the header state variables, it is the tuple (None, None).
 #
-SrcDst = Tuple[Union[Subnet, str, None], Union[Subnet, None]]
+SrcDst = Tuple[Union[Subnet, str, None], Union[Subnet, str, None]]
 
 # Return type for routines that return a SrcDst or a position in the
 # string to restart the search using finditer().
 #
 SrcDstPos = Union[SrcDst, int]
+
+### Network objects
+
+OBJECT_DICT: Dict[str, List[Subnet]] = {}
 
 ### IP address, subnet and prefix list matching
 
@@ -223,12 +228,12 @@ EXTENDED_ACL_RE = r'''
 # $4 = source host IP address
 # $5 = source subnet IP address
 # $6 = source netmask
-# $7 = source port
+# $7 = source object group name
 # $8 = destination IP address (all)
 # $9 = destination host IP address
 # $10 = destination subnet IP address
 # $11 = destination netmask
-# $12 = destination port
+# $12 = destination object group name
 EXTENDED_ASA_ACL_RE = r'''
     ^
     [ ]*
@@ -236,18 +241,19 @@ EXTENDED_ASA_ACL_RE = r'''
     \S+[ ]
     extended[ ]
     (permit|deny)[ ]
-    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)[ ]
+    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim|object(?:-group)?[ ](?:\S+))[ ]
     (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
-        + IP_ADDR + r'''))
+        + IP_ADDR + r''')|object(?:-group)?[ ](\S+))
     (?:
-        [ ] eq [ ] (\S+)
+        [ ] (?:eq|gt) [ ] \S+
     |
         [ ] range [ ] \S+ [ ] \S+
     )?
     [ ]
     (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
-        + IP_ADDR + r'''))
-    (?:[ ]eq[ ](\S+))?
+        + IP_ADDR + r''')|object(?:-group)?[ ](\S+)
+    )
+    (?:[ ]eq[ ]\S+)?
 '''
 
 EXTENDED_IGNORE_RE = r'''
@@ -545,7 +551,7 @@ def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the header of a standard or extended ACL"""
     logging.debug("got ACL_HEADER = %r", re_match.group(lastidx))
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
-    yield re_match.group(lastidx + 0), None
+    yield re_match.group(lastidx + 0), re_match.group(lastidx + 1)
 
 def extended_ignore_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match a line that is part of an object, but should be ignored.
@@ -557,38 +563,64 @@ def extended_ignore_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     # Do not reset current_acl_name (parser is in middle of object)
     yield None, None
 
+def yield_object_subnets(obj_key: str) -> Iterable[Subnet]:
+    """Yield the subnets from the network object obj_key"""
+    logging.debug('obj_key = %r', obj_key)
+    assert obj_key in OBJECT_DICT, obj_key
+    for value in OBJECT_DICT[obj_key]:
+        logging.debug('obj_key value = %r', value)
+        yield value
+
+def yield_single_subnet(subnet: Subnet) -> Iterable[Subnet]:
+    """Accept a single argument subnet that will be yielded as needed"""
+    yield subnet
+
 def handle_extended_acl(re_match: Match[str], lastidx: int,
-                        wildcard: bool) -> SrcDst:
+                        wildcard: bool) -> Iterable[SrcDst]:
     """Extract values from the various formats for an extended ACL.
     The wildcard variable can be set to True if the subnet mask is
     inversed (such as Cisco routers)."""
 
-    # XXX needs to work when both -s and -d specified (logical or)
-    # XXX needs error checking
-    logging.debug("wildcard = %r", wildcard)
-    src = range_to_net(re_range=re_match.group(lastidx + 3),
-                       re_host=re_match.group(lastidx + 4),
-                       re_net=re_match.group(lastidx + 5),
-                       re_mask=re_match.group(lastidx + 6),
-                       usewild=wildcard)
-    logging.debug("src = %r", src)
-    dst = range_to_net(re_range=re_match.group(lastidx + 8),
-                       re_host=re_match.group(lastidx + 9),
-                       re_net=re_match.group(lastidx + 10),
-                       re_mask=re_match.group(lastidx + 11),
-                       usewild=wildcard)
-    logging.debug("dst = %r", dst)
-    return src, dst
+    if re_match.group(lastidx + 3).startswith('object'):
+        logging.debug('source address is object %r',
+                      re_match.group(lastidx + 7))
+        srciter = yield_object_subnets(re_match.group(lastidx + 7))
+    else:
+        logging.debug("wildcard = %r", wildcard)
+        src = range_to_net(re_range=re_match.group(lastidx + 3),
+                           re_host=re_match.group(lastidx + 4),
+                           re_net=re_match.group(lastidx + 5),
+                           re_mask=re_match.group(lastidx + 6),
+                           usewild=wildcard)
+        logging.debug("src = %r", src)
+        srciter = yield_single_subnet(src)
+
+    if re_match.group(lastidx + 8).startswith('object'):
+        logging.debug('destination address is object %r',
+                      re_match.group(lastidx + 12))
+        dstiter = yield_object_subnets(re_match.group(lastidx + 12))
+    else:
+        dst = range_to_net(re_range=re_match.group(lastidx + 8),
+                           re_host=re_match.group(lastidx + 9),
+                           re_net=re_match.group(lastidx + 10),
+                           re_mask=re_match.group(lastidx + 11),
+                           usewild=wildcard)
+        logging.debug("dst = %r", dst)
+        dstiter = yield_single_subnet(dst)
+
+    logging.debug('srciter = %r', srciter)
+    logging.debug('dstiter = %r', dstiter)
+    yield from product(srciter, dstiter)
 
 def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ACL_RE regex"""
     logging.debug("got EXTENDED_ACL_RE = %r", re_match.group(lastidx))
-    yield handle_extended_acl(re_match, lastidx, wildcard=True)
+    yield from handle_extended_acl(re_match, lastidx, wildcard=True)
 
 def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ASA_ACL_RE regex"""
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
-    yield handle_extended_acl(re_match, lastidx, wildcard=False)
+    yield from handle_extended_acl(re_match, lastidx, wildcard=False)
 
 def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
@@ -729,7 +761,6 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
 
     last_acl_name = None
     current_acl_name = None
-    current_acl_line = None
     for line_num, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
@@ -744,18 +775,27 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
                 logging.debug("find_regex() found ignored line")
                 break
             if isinstance(src, str):
+                assert isinstance(dst, str)
                 logging.debug("find_regex() found new header")
+                logging.debug("src = %r", src)
+                logging.debug("dst = %r", dst)
                 # New header for network object
-                current_acl_name = src
+                current_acl_name = src          # src is entire line
+                current_acl_obj = dst           # dst is object name
                 current_acl_line = line_num
+                # Create the object in the dict
+                OBJECT_DICT.setdefault(current_acl_obj, [])
                 break
             assert isinstance(src, Subnet)
             assert isinstance(dst, Subnet)
 
-            logging.debug('current_acl_name = %r, '
-                          'current_acl_line = %r, '
-                          'last_acl_name = %r',
-                          current_acl_name, current_acl_line, last_acl_name)
+            logging.debug('current_acl_name = %r', current_acl_name)
+            if current_acl_name is not None:
+                logging.debug('current_acl_line = %r', current_acl_line)
+                logging.debug('current_acl_obj = %r', current_acl_obj)
+                logging.debug('last_acl_name = %r', last_acl_name)
+                # Save the src (address of object) using the current object name
+                OBJECT_DICT[current_acl_obj].append(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
             # See if the src/dst from the config matches srcmatch/dstmatch
