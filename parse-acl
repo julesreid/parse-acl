@@ -517,7 +517,29 @@ def getoptions() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         description='Find prefix ranges in ACLs from a Cisco '
-                    'router or firewall')
+                    'router or firewall',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog='''\
+A prefix range consists of an IP address (with an optional prefix
+length indicating a subnet), and two optional keywords that specify
+the minimum and maximum prefix lengths for matches.
+
+    IP[/LENGTH] [ge M] [le N]
+
+The prefix length must be 0 <= length <= 32, and the ge and le
+arguments must be 0 <= ge <= le <= 32.
+
+Examples:
+
+1.1.1.1                 Look for a single IP address
+1.1.1.0/24              Look for a specific subnet
+1.1.1.0/24 le 32        Look for any IP address or subnet in a subnet
+1.1.1.0/24 ge 32 le 32  Look for host IP addresses in a subnet
+1.1.0.0/16 ge 1 le 32   Look for any IP address or subnet in a subnet
+                        and also any supernets except the default route
+1.1.1.0/16 ge 0         Look for any supernets of a subnet including
+                        the default route
+''')
 
     parser.add_argument('-s', '--source',
                         help='source prefix range to match in configuration',
@@ -533,7 +555,7 @@ def getoptions() -> argparse.Namespace:
                         action=PrefixRangeAction,
                         metavar='DESTINATION')
     parser.add_argument('-x', '--reverse',
-                        help='swap the source and destinaton addresses '
+                        help='swap the source and destinaton addresses\n'
                              '(for convenience)',
                         action='store_true')
     parser.add_argument('-v', '--verbose',
@@ -544,7 +566,7 @@ def getoptions() -> argparse.Namespace:
                         dest='log_level')
     parser.add_argument('-t', '--test',
                         nargs=4,
-                        help='test the arguments from the command line '
+                        help='test the arguments from the command line\n'
                              '(source1, source2, minlen, maxlen)',
                         action='extend')
 
@@ -667,12 +689,12 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     msk = re_match.group(lastidx + 3)
     src = addrmasktosubnet(start, msk)
     if src is None:
-        raise ValueError('invalid mask for address')
+        raise SyntaxError('invalid mask for address')
     dst = ANY
     yield src, dst
     src = addrmasktosubnet(end, msk)
     if src is None:
-        raise ValueError('invalid mask for address')
+        raise SyntaxError('invalid mask for address')
     yield src, dst
 
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDstPos]:
@@ -875,6 +897,9 @@ def main() -> None:
     parse_config(srcmatch, dstmatch)
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except SyntaxError as err:
+        sys.exit(f"{sys.argv[0]}: {err}\nUse -h to see help.")
 
 # vim: filetype=python et ts=4 wm=0:
