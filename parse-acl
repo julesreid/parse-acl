@@ -173,7 +173,7 @@ STANDARD_ACL_RE = r'''
         access-list[ ]\d+
     )?
     [ ]
-    (permit|deny)[ ]
+    (permit|deny)[ ]+
     (
         any
         | (''' + IP_ADDR + r''')
@@ -181,6 +181,7 @@ STANDARD_ACL_RE = r'''
               [ ] (''' + IP_ADDR + r''')
           )?
     )
+    $
 '''
 
 ## Extended numbered
@@ -201,6 +202,9 @@ STANDARD_ACL_RE = r'''
 #  deny   udp any eq bootpc any eq bootps log
 #  permit ip any any
 
+# The extra ()s are to make the indexes of the back references the same
+# as the EXTENDED_ASA_ACL_RE regex.  This is because both regexes share
+# handle_extended_acl(), which uses the same indexes for both regexes.
 EXTENDED_ACL_RE = r'''
     ^
     [ ]*
@@ -211,16 +215,20 @@ EXTENDED_ACL_RE = r'''
     (permit|deny)
     [ ]
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
+    ()
     [ ]
     (any|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' + IP_ADDR + r'''))
+    ()
     (?:
-        [ ] eq [ ] (\S+)
+        [ ] eq [ ] \S+
     |
         [ ] range [ ] \S+ [ ] \S+
     )?
+    ()
     [ ]
     (any|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' + IP_ADDR + r'''))
-    (?:[ ]eq[ ](\S+))?
+    ()
+    (?:[ ]eq[ ]\S+)?
 '''
 
 ## Extended ASA (NOTE: not a wildcard mask)
@@ -247,19 +255,28 @@ EXTENDED_ASA_ACL_RE = r'''
     \S+[ ]
     extended[ ]
     (permit|deny)[ ]
-    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim|object(?:-group)?[ ](?:\S+))[ ]
+    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim|object(?:-group)?[ ](\S+))[ ]
     (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
         + IP_ADDR + r''')|object(?:-group)?[ ](\S+))
     (?:
         [ ] (?:eq|gt) [ ] \S+
     |
         [ ] range [ ] \S+ [ ] \S+
+    |
+        [ ]object(?:-group)?[ ](\S+)
     )?
     [ ]
     (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
         + IP_ADDR + r''')|object(?:-group)?[ ](\S+)
     )
-    (?:[ ]eq[ ]\S+)?
+    (?:
+        [ ] (?:eq|gt) [ ] \S+
+        |[ ] range [ ] \S+ [ ] \S+
+        |[ ]object(?:-group)?[ ](\S+)
+    )?
+    (?:[ ]log)?
+    (?:[ ]debugging)?
+    $
 '''
 
 EXTENDED_IGNORE_RE = r'''
@@ -608,29 +625,32 @@ def handle_extended_acl(re_match: Match[str], lastidx: int,
     The wildcard variable can be set to True if the subnet mask is
     inversed (such as Cisco routers)."""
 
-    if re_match.group(lastidx + 3).startswith('object'):
+    if re_match.group(lastidx + 4).startswith('object'):
         logging.debug('source address is object %r',
-                      re_match.group(lastidx + 7))
-        srciter = yield_object_subnets(re_match.group(lastidx + 7))
+                      re_match.group(lastidx + 8))
+        srciter = yield_object_subnets(re_match.group(lastidx + 8))
     else:
         logging.debug("wildcard = %r", wildcard)
-        src = range_to_net(re_range=re_match.group(lastidx + 3),
-                           re_host=re_match.group(lastidx + 4),
-                           re_net=re_match.group(lastidx + 5),
-                           re_mask=re_match.group(lastidx + 6),
+        src = range_to_net(re_range=re_match.group(lastidx + 4),
+                           re_host=re_match.group(lastidx + 5),
+                           re_net=re_match.group(lastidx + 6),
+                           re_mask=re_match.group(lastidx + 7),
                            usewild=wildcard)
         logging.debug("src = %r", src)
         srciter = yield_single_subnet(src)
 
-    if re_match.group(lastidx + 8).startswith('object'):
-        logging.debug('destination address is object %r',
-                      re_match.group(lastidx + 12))
-        dstiter = yield_object_subnets(re_match.group(lastidx + 12))
+    if re_match.group(lastidx + 10).startswith('object'):
+        dstgroup = re_match.group(lastidx + 14)
+        if dstgroup not in OBJECT_DICT:
+            logging.debug('had to backtrack to get dstgroup')
+            dstgroup = re_match.group(lastidx + 9)
+        dstiter = yield_object_subnets(dstgroup)
+        logging.debug('destination address is object %r', dstgroup)
     else:
-        dst = range_to_net(re_range=re_match.group(lastidx + 8),
-                           re_host=re_match.group(lastidx + 9),
-                           re_net=re_match.group(lastidx + 10),
-                           re_mask=re_match.group(lastidx + 11),
+        dst = range_to_net(re_range=re_match.group(lastidx + 10),
+                           re_host=re_match.group(lastidx + 11),
+                           re_net=re_match.group(lastidx + 12),
+                           re_mask=re_match.group(lastidx + 13),
                            usewild=wildcard)
         logging.debug("dst = %r", dst)
         dstiter = yield_single_subnet(dst)
