@@ -189,6 +189,7 @@ STANDARD_ACL_RE = r'''
               [ ] (''' + IP_ADDR + r''')
           )?
     )
+    [ ]*
     $
 '''
 
@@ -246,16 +247,19 @@ EXTENDED_ACL_RE = r'''
 
 # $1 = permit|deny
 # $2 = protocol
-# $3 = source IP address (all)
-# $4 = source host IP address
-# $5 = source subnet IP address
-# $6 = source netmask
-# $7 = source object group name
-# $8 = destination IP address (all)
-# $9 = destination host IP address
-# $10 = destination subnet IP address
-# $11 = destination netmask
-# $12 = destination object group name
+# $3 = protocol object name or None
+# $4 = source IP address (all)
+# $5 = source host IP address
+# $6 = source subnet IP address
+# $7 = source netmask
+# $8 = source object group name
+# $9 = source port object group name
+# $10 = destination IP address (all)
+# $11= destination host IP address
+# $12 = destination subnet IP address
+# $13 = destination netmask
+# $14 = destination object group name
+# $15 = destination port object group name
 EXTENDED_ASA_ACL_RE = r'''
     ^
     [ ]*
@@ -284,6 +288,7 @@ EXTENDED_ASA_ACL_RE = r'''
     )?
     (?:[ ]log)?
     (?:[ ]debugging)?
+    [ ]*
     $
 '''
 
