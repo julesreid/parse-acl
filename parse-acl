@@ -434,7 +434,7 @@ def range_to_net(re_range: str, re_host: Optional[str],
 # LEN: undefined GE: defined   LE: defined     ge=GE,  le=LE
 # LEN: undefined GE: defined   LE: undefined   ge=GE,  le=32
 
-# LEN: defined   GE: defined   LE: undefined   ge=GE,  le=32
+# LEN: defined   GE: defined   LE: undefined   ge=GE,  le=LEN
 # LEN: defined   GE: defined   LE: defined     ge=GE,  le=LE
 # LEN: defined   GE: undefined LE: defined     ge=LEN, le=LE
 # LEN: defined   GE: undefined LE: undefined   ge=LEN, le=LEN
@@ -447,10 +447,9 @@ def normalize_prefix_lengths(ip: int,
     if length is None:
         length = 32
     if le is None:
+        le = length
         if ge is None:
-            ge = le = length
-        else:
-            le = 32
+            ge = length
     elif ge is None:
         ge = length
     if not 0 <= length <= 32:
