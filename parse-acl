@@ -429,29 +429,33 @@ def range_to_net(re_range: str, re_host: Optional[str],
             mask = netmasktoprefix(iptoint(re_mask))
     return Subnet(ip=net, prefix=mask)
 
-# LEN: undefined GE: undefined LE: undefined   ge=32,  le=32
-# LEN: undefined GE: undefined LE: defined     ge=32,  le=LE
-# LEN: undefined GE: defined   LE: defined     ge=GE,  le=LE
-# LEN: undefined GE: defined   LE: undefined   ge=GE,  le=32
-
-# LEN: defined   GE: defined   LE: undefined   ge=GE,  le=LEN
-# LEN: defined   GE: defined   LE: defined     ge=GE,  le=LE
-# LEN: defined   GE: undefined LE: defined     ge=LEN, le=LE
-# LEN: defined   GE: undefined LE: undefined   ge=LEN, le=LEN
 def normalize_prefix_lengths(ip: int,
                              length: Optional[int],
                              ge: Optional[int],
                              le: Optional[int]) -> PrefixRange:
     """Fill in the parts of a prefix range using default or derived
-    values if those parts are None"""
+    values if those parts are None.  Any time the prefix length is not
+    given, it defaults to 32.  If ge or le is not given, it defaults
+    to the prefix length (except for special cases to match Cisco's
+    prefix-list behavior)."""
+
     if length is None:
         length = 32
     if le is None:
-        le = length
         if ge is None:
-            ge = length
+            ge = le = length
+        elif ge > length:
+            # Ordinarily generates an error, but allow this special
+            # case to match Cisco's behavior (e.g., '10.0.0.0/8 ge 9')
+            le = 32
+        else:
+            le = length
     elif ge is None:
-        ge = length
+        if le < length:
+            # Same special case, but in reverse (e.g., '10.0.0.0/8 le 7')
+            ge = 0
+        else:
+            ge = length
     if not 0 <= length <= 32:
         raise SyntaxError('must have 0 <= length <= 32')
     if not 0 <= ge <= le <= 32:
