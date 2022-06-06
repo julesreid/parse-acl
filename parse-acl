@@ -429,10 +429,10 @@ def range_to_net(re_range: str, re_host: Optional[str],
             mask = netmasktoprefix(iptoint(re_mask))
     return Subnet(ip=net, prefix=mask)
 
-def normalize_prefix_lengths(ip: int,
-                             length: Optional[int],
-                             ge: Optional[int],
-                             le: Optional[int]) -> PrefixRange:
+def normalize_prefix_lengths(ip: IP,
+                             length: Optional[PrefixLength],
+                             ge: Optional[PrefixLength],
+                             le: Optional[PrefixLength]) -> PrefixRange:
     """Fill in the parts of a prefix range using default or derived
     values if those parts are None.  Any time the prefix length is not
     given, it defaults to 32.  If ge or le is not given, it defaults
