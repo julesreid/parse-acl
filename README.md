@@ -2,8 +2,10 @@
 ## Find prefix ranges in ACLs from a Cisco firewall or router
 
 This command takes the configuration of a Cisco firewall or router and parses it for subnets that meet certain criteria.
+The matching arguments use the same syntax as Cisco prefix lists, but
+remove restrictions with the allowable lengths to make matching easier.
 A subnet can be a single IP address or can be a subnet with a prefix length that represents the
-subnet mask (represented by a slash followed by the prefix length).
+subnet mask (using a slash followed by the prefix length).
 An example of an IP address is ```1.2.3.4``` and an example of a subnet is ```1.2.3.0/24```.
 
 The configuration is currently read from standard input.  In a shell environment, this requires using
@@ -44,6 +46,20 @@ the minimum and maximum prefix lengths for matches.
 *IP*[```/```*LENGTH*] [```ge``` *M*] [```le``` *N*]
 
 The prefix length must be 0 ≤ length ≤ 32, and 0 ≤ ```ge``` ≤ ```le``` ≤ 32.
+Because spaces are used in the syntax, in a shell environment the argument must
+be quoted.  Example: 
+
+    parse-acl -s '1.2.3.0/24 le 32' -d '192.168.0.0/16 ge 0 le 32' < file
+
+Note that unlike Cisco prefix lists, there is no dependency for
+```ge``` or ```le``` on the prefix length.  For instance, this will
+generate an error on a Cisco router:
+
+    example(config)#ip prefix-list EXAMPLE permit 1.2.3.0/24 ge 1 le 32
+    % Invalid prefix range for 1.2.3.0/24, make sure: len < ge-value <= le-value
+
+By removing this restriction, supernets can be found also, which is
+useful when verifying routing.
 
 ## Examples
 
