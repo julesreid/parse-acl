@@ -87,8 +87,7 @@ SUBNET_WITH_MASK_RE = r'''
     (?:
         [ ](?:net)?mask
     )?
-    [ ]
-    (''' + IP_ADDR + r''')
+    [ ](''' + IP_ADDR + r''')
 '''
 
 # $1 = IP subnet
@@ -119,8 +118,7 @@ NET_OR_GRP_OBJECT_RE = r'''
     (?:
         group-object
         |network-object[ ]object
-    )
-    [ ]
+    )[ ]
     (\S+)
 '''
 
@@ -132,10 +130,8 @@ IP_NAT_POOL_RE = r'''
     [ ]*
     ip[ ]nat[ ]pool[ ]
     \S+[ ]
-    (''' + IP_ADDR + r''')
-    [ ]
-    (''' + IP_ADDR + r''')
-    [ ]
+    (''' + IP_ADDR + r''')[ ]
+    (''' + IP_ADDR + r''')[ ]
     netmask[ ]
     (''' + IP_ADDR + r''')
 '''
@@ -144,14 +140,15 @@ IP_NAT_POOL_RE = r'''
 
 # ip access-list extended network-services-in
 
+# $1 = object name
 ACL_HEADER = r'''
     ^
     (?:
         ip[ ]access-list[ ](?:standard|extended)
-        | object(?:-group)?[ ]network
-        | interface
-    )
-    [ ](\S+)
+        |object(?:-group)?[ ]network
+        |interface
+    )[ ]
+    (\S+)
 '''
 
 ## Standard numbered
@@ -186,7 +183,7 @@ STANDARD_ACL_RE = r'''
         any
         | (''' + IP_ADDR + r''')
           (?:
-              [ ] (''' + IP_ADDR + r''')
+              [ ](''' + IP_ADDR + r''')
           )?
     )
     [ ]*
@@ -221,17 +218,15 @@ EXTENDED_ACL_RE = r'''
         access-list[ ]\d+
     )?
     [ ]
-    (permit|deny)
-    [ ]
+    (permit|deny)[ ]
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
     ()
     [ ]
     (any|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' + IP_ADDR + r'''))
     ()
     (?:
-        [ ] eq [ ] \S+
-    |
-        [ ] range [ ] \S+ [ ] \S+
+        [ ]eq[ ]\S+
+        |[ ]range[ ]\S+[ ]\S+
     )?
     ()
     [ ]
@@ -255,7 +250,7 @@ EXTENDED_ACL_RE = r'''
 # $8 = source object group name
 # $9 = source port object group name
 # $10 = destination IP address (all)
-# $11= destination host IP address
+# $11 = destination host IP address
 # $12 = destination subnet IP address
 # $13 = destination netmask
 # $14 = destination object group name
@@ -267,23 +262,29 @@ EXTENDED_ASA_ACL_RE = r'''
     \S+[ ]
     extended[ ]
     (permit|deny)[ ]
-    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim|object(?:-group)?[ ](\S+))[ ]
-    (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
-        + IP_ADDR + r''')|object(?:-group)?[ ](\S+))
-    (?:
-        [ ] (?:eq|gt) [ ] \S+
-    |
-        [ ] range [ ] \S+ [ ] \S+
-    |
-        [ ]object(?:-group)?[ ](\S+)
-    )?
-    [ ]
-    (any4?|host[ ](''' + IP_ADDR + r')|(' + IP_ADDR + r')[ ](' \
-        + IP_ADDR + r''')|object(?:-group)?[ ](\S+)
+    (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf
+     |pcp|pim|object(?:-group)?[ ](\S+))[ ]
+    (
+        any4?
+        |host[ ](''' + IP_ADDR + r''')
+        |(''' + IP_ADDR + r')[ ](' + IP_ADDR + r''')
+        |object(?:-group)?[ ](\S+)
     )
     (?:
-        [ ] (?:eq|gt) [ ] \S+
-        |[ ] range [ ] \S+ [ ] \S+
+        [ ](?:eq|gt)[ ]\S+
+        |[ ]range[ ]\S+[ ]\S+
+        |[ ]object(?:-group)?[ ](\S+)
+    )?
+    [ ]
+    (
+        any4?
+        |host[ ](''' + IP_ADDR + r''')
+        |(''' + IP_ADDR + r')[ ](' + IP_ADDR + r''')
+        |object(?:-group)?[ ](\S+)
+    )
+    (?:
+        [ ](?:eq|gt)[ ]\S+
+        |[ ]range[ ]\S+[ ]\S+
         |[ ]object(?:-group)?[ ](\S+)
     )?
     (?:[ ]log)?
@@ -296,14 +297,15 @@ EXTENDED_IGNORE_RE = r'''
     ^
     [ ]*
     (?:
-        (?: access-list[ ]\d+ )? [ ] (?:dynamic|evaluate|remark)[ ]
-        | [ ]description[ ]
-        | [ ]port-object[ ]
-        | [ ]vlan[ ]
-        | [ ]nameif[ ]
-        | [ ]security-level[ ]
-        | [ ]mac-address[ ]
+        (?: access-list[ ]\d+ )?[ ](?:dynamic|evaluate|remark)
+        |[ ]description
+        |[ ]port-object
+        |[ ]vlan
+        |[ ]nameif
+        |[ ]security-level
+        |[ ]mac-address
     )
+    [ ]
 '''
 
 ### IP address utility functions
