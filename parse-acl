@@ -3,6 +3,13 @@
 """
 Find prefix ranges in ACLs from a Cisco router or firewall
 
+The idea is to find all ACLs which apply to a certain host or
+network range.
+
+To do:
+
+* Match ranges (correctly accounting for overlaps, either in whole or part)
+
 Copyright © 2022 J. Cowley
 
 This program is free software: you can redistribute it and/or modify
@@ -17,15 +24,6 @@ General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
-"""
-
-"""
-The idea is to find all ACLs which apply to a certain host or
-network range.
-
-To do:
-
-* Match ranges (correctly accounting for overlaps, either in whole or part)
 """
 
 import sys
