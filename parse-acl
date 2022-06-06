@@ -216,7 +216,7 @@ EXTENDED_ACL_RE = r'''
         access-list[ ]\d+
     )?
     [ ]
-    (permit|deny)[ ]
+    (permit|deny)[ ]+
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
     ()
     [ ]
