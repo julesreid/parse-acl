@@ -36,6 +36,8 @@ Because the statement has a subnet mask, it is treated as ```1.2.3.0/24```, and 
 | ```-s``` *SOURCE*, ```--source``` *SOURCE* | source prefix range to match in configuration |
 | ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* |                        destination prefix range to match in configuration
 |  ```-x```, ```--reverse``` |        swap the source and destinaton addresses (for convenience) |
+|  ```-p```, ```--duplicate``` |      duplicate the source address as the destination address |
+|  ```-o```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
 | ```-v```, ```--verbose``` |        be verbose |
 |  ```-t``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN*, ```--test``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN* | test the arguments from the command line |
 
