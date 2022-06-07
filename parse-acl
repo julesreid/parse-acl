@@ -876,9 +876,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
 
             logging.debug('current_acl_name = %r', current_acl_name)
             if current_acl_name is not None:
-                logging.debug('current_acl_line = %r', current_acl_line)
                 logging.debug('current_acl_obj = %r', current_acl_obj)
-                logging.debug('last_acl_name = %r', last_acl_name)
                 # Save the src (address of object) using the current object name
                 OBJECT_DICT[current_acl_obj].append(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
@@ -887,12 +885,15 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
             if (match_subnet_prefixrange(src, srcmatch) and
                     match_subnet_prefixrange(dst, dstmatch)):
                 logging.debug('got match')
-                if current_acl_name and (last_acl_name is None
-                                         or last_acl_name != current_acl_name):
-                    # Header for the ACL changed, so print it now
-                    assert current_acl_line is not None
-                    print("%5d %s" % (current_acl_line, current_acl_name))
-                    last_acl_name = current_acl_name
+                if current_acl_name is not None:
+                    logging.debug('current_acl_line = %r', current_acl_line)
+                    logging.debug('last_acl_name = %r', last_acl_name)
+                    if (last_acl_name is None
+                            or last_acl_name != current_acl_name):
+                        # Header for the ACL changed, so print it now
+                        assert current_acl_line is not None
+                        print("%5d %s" % (current_acl_line, current_acl_name))
+                        last_acl_name = current_acl_name
                 print("%5d %s" % (line_num, line))
                 # Break now, otherwise the same line can be printed more
                 # than once
