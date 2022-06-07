@@ -591,6 +591,15 @@ Examples:
                         help='swap the source and destinaton addresses\n'
                              '(for convenience)',
                         action='store_true')
+    parser.add_argument('-p', '--duplicate',
+                        help='duplicate the source address as the\n'
+                             'destination address',
+                        action='store_true')
+    parser.add_argument('-o', '--or',
+                        help='use a logical-or operation instead of\n'
+                             'logical-and between source and destination',
+                        action='store_true',
+                        dest='logicalor')
     parser.add_argument('-v', '--verbose',
                         help='be verbose',
                         action='store_const',
@@ -840,7 +849,8 @@ def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
                 yield None
             return
 
-def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
+def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
+                 logicalor: bool) -> None:
     """Parse the configuration and search for lines which match ACLs,
     network objects, or other places IP addresses are used."""
 
@@ -882,8 +892,9 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
             # See if the src/dst from the config matches srcmatch/dstmatch
-            if (match_subnet_prefixrange(src, srcmatch) and
-                    match_subnet_prefixrange(dst, dstmatch)):
+            match_src = match_subnet_prefixrange(src, srcmatch)
+            match_dst = match_subnet_prefixrange(dst, dstmatch)
+            if match_src or match_dst if logicalor else match_src and match_dst:
                 logging.debug('got match')
                 if current_acl_name is not None:
                     logging.debug('current_acl_line = %r', current_acl_line)
@@ -911,6 +922,8 @@ def main() -> None:
     assert isinstance(args.destination, PrefixRange)
     assert isinstance(args.log_level, int)
     assert isinstance(args.reverse, bool)
+    assert isinstance(args.duplicate, bool)
+    assert isinstance(args.logicalor, bool)
 
     srcmatch = args.source
     dstmatch = args.destination
@@ -927,11 +940,13 @@ def main() -> None:
 
     if args.reverse:
         srcmatch, dstmatch = dstmatch, srcmatch
+    if args.duplicate:
+        dstmatch = srcmatch
 
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
 
-    parse_config(srcmatch, dstmatch)
+    parse_config(srcmatch, dstmatch, args.logicalor)
 
 if __name__ == '__main__':
     try:
