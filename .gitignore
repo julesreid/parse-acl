@@ -1,0 +1,4 @@
+# Ignored files and directories
+
+# mypy caches
+.mypy_cache/
