@@ -34,7 +34,7 @@ import argparse
 import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
-                    Iterable, Tuple, Dict, List)
+                    Iterable, Tuple, Dict, Set)
 
 # Set some types used for holding data
 #
@@ -71,7 +71,7 @@ SrcDstPos = Union[SrcDst, int]
 
 ### Network objects
 
-OBJECT_DICT: Dict[str, List[Subnet]] = {}
+OBJECT_DICT: Dict[str, Set[Subnet]] = {}
 
 ### IP address, subnet and prefix list matching
 
@@ -879,7 +879,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 current_acl_obj = dst           # dst is object name
                 current_acl_line = line_num
                 # Create the object in the dict
-                OBJECT_DICT.setdefault(current_acl_obj, [])
+                OBJECT_DICT.setdefault(current_acl_obj, set())
                 break
             assert isinstance(src, Subnet)
             assert isinstance(dst, Subnet)
@@ -888,7 +888,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             if current_acl_name is not None:
                 logging.debug('current_acl_obj = %r', current_acl_obj)
                 # Save the src (address of object) using the current object name
-                OBJECT_DICT[current_acl_obj].append(src)
+                OBJECT_DICT[current_acl_obj].add(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
             # See if the src/dst from the config matches srcmatch/dstmatch
