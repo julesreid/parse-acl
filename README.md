@@ -28,13 +28,14 @@ redirection from a file using ```<```.  For instance, ```parse-acl -s 1.1.1.1 < 
 Ideally, a subnet is normalized, meaning that the host portion of the subnet is all zeroes.
 An example of a normalized subnet is ```1.2.0.0/16```, whereas ```1.2.3.0/16``` is not normalized because the
 portion in the third octet is not zero.  A warning is given if an argument is not normalized, and the program
-automatically normalizes it.
+automatically normalizes it when matching.
 This is also relevant when dealing with configurations that have an IP address and a subnet mask, such as the
 ```ip address``` statement:
 
     ip address 1.2.3.4 255.255.255.0
 
-Because the statement has a subnet mask, it is treated as ```1.2.3.0/24```, and ```1.2.3.4``` will not match.
+Because the statement has a subnet mask and is stored as ```1.2.3.4/24```,
+it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will not match.
 
 ## Command-line options
 
