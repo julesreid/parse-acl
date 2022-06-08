@@ -8,13 +8,27 @@ A subnet can be a single IP address or can be a subnet with a prefix length that
 subnet mask (using a slash followed by the prefix length).
 An example of an IP address is ```1.2.3.4``` and an example of a subnet is ```1.2.3.0/24```.
 
+Any text that looks like an IP address or subnet is tested to see if it matches.
+If it is part of an object, the name of the object is recorded so that it can be shown.  Objects
+and standard access lists
+are matched by the source prefix range only, and extended access lists are shown only
+if both the source and destination prefix ranges match
+(this can be changed to match either with the ```--or``` option).
+If not specified, the source and destination prefix ranges default to ```0.0.0.0/0 le 32```,
+which matches any subnet.  Protocols such as ```icmp``` are ignored, as are ```udp```
+and ```tcp``` port numbers.  The program is only concerned with layer 3 IP addresses.
+
+Objects and object groups are expanded so that the IP subnets contained in them
+are tested whenever the object name is encountered, which matches the behavior of
+Cisco firewalls.
+
 The configuration is currently read from standard input.  In a shell environment, this requires using
 redirection from a file using ```<```.  For instance, ```parse-acl -s 1.1.1.1 < firewall-configuration```.
 
-Ideally, the subnet is normalized, meaning that the host portion of the subnet is all zeroes.
+Ideally, a subnet is normalized, meaning that the host portion of the subnet is all zeroes.
 An example of a normalized subnet is ```1.2.0.0/16```, whereas ```1.2.3.0/16``` is not normalized because the
-portion in the third octet is not zero.  A warning is given if an argument is not normalized, but it is treated
-as if it were normalized.
+portion in the third octet is not zero.  A warning is given if an argument is not normalized, and the program
+automatically normalizes it.
 This is also relevant when dealing with configurations that have an IP address and a subnet mask, such as the
 ```ip address``` statement:
 
@@ -36,6 +50,8 @@ Because the statement has a subnet mask, it is treated as ```1.2.3.0/24```, and 
 | ```-s``` *SOURCE*, ```--source``` *SOURCE* | source prefix range to match in configuration |
 | ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* |                        destination prefix range to match in configuration
 |  ```-x```, ```--reverse``` |        swap the source and destinaton addresses (for convenience) |
+|  ```-p```, ```--duplicate``` |      duplicate the source address as the destination address |
+|  ```-o```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
 | ```-v```, ```--verbose``` |        be verbose |
 |  ```-t``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN*, ```--test``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN* | test the arguments from the command line |
 
