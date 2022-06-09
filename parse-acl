@@ -49,6 +49,10 @@ class Subnet(NamedTuple):
     prefix: PrefixLength = 32
     def __repr__(self) -> str:
         return 'Subnet(' + subnettoip(self) + ')'
+    def __str__(self) -> str:
+        if self.prefix == 32:
+            return inttoip(self.ip)
+        return subnettoip(self)
 
 class PrefixRange(NamedTuple):
     """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
