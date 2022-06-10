@@ -62,11 +62,10 @@ class PrefixRange(NamedTuple):
 
 # Return type for routines that match subnets.  The usual format is a
 # tuple with the source and destination subnets.  If a new header is
-# detected, then the tuple is (str, None), where the string is the name
-# of the header.  In the case that a line should be ignored without
-# resetting the header state variables, it is the tuple (None, None).
+# detected, then the tuple is (str, src), where the first string is the
+# entire line, and the second string is the name of the object.
 #
-SrcDst = Tuple[Union[Subnet, str, None], Union[Subnet, str, None]]
+SrcDst = Tuple[Union[Subnet, str], Union[Subnet, str]]
 
 # Return type for routines that return a SrcDst or a position in the
 # string to restart the search using finditer().
@@ -293,21 +292,6 @@ EXTENDED_ASA_ACL_RE = r'''
     (?:[ ]debugging)?
     [ ]*
     $
-'''
-
-EXTENDED_IGNORE_RE = r'''
-    ^
-    [ ]*
-    (?:
-        (?: access-list[ ]\d+ )?[ ](?:dynamic|evaluate|remark)
-        |[ ]description
-        |[ ]port-object
-        |[ ]vlan
-        |[ ]nameif
-        |[ ]security-level
-        |[ ]mac-address
-    )
-    [ ]
 '''
 
 ### IP address utility functions
@@ -626,16 +610,6 @@ def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
     yield re_match.group(lastidx + 0), re_match.group(lastidx + 1)
 
-def extended_ignore_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match a line that is part of an object, but should be ignored.
-    The main purpose of this is to make sure that current_acl_name
-    stays set to the same value while parsing the object.  Once a
-    line matches that is not in the object, current_acl_name can set
-    to another value or None."""
-    logging.debug("got EXTENDED_IGNORE_RE = %r", re_match.group(lastidx))
-    # Do not reset current_acl_name (parser is in middle of object)
-    yield None, None
-
 def yield_object_subnets(obj_key: str) -> Iterable[Subnet]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
@@ -776,7 +750,6 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 
 MATCH_RE_TABLE_RAW = {
     "ACL_HEADER": acl_header,
-    "EXTENDED_IGNORE_RE": extended_ignore_re,
     "EXTENDED_ACL_RE": extended_acl_re,
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
     "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
@@ -829,10 +802,7 @@ def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
     If a match is found, return the source and destination subnets
     found.  If only a source subnet was found, the destination will
     be 0.0.0.0/0.  As a special case, if source address is a string
-    instead, it means a header with an object name was matched.
-    Another special case is when both the source and destination
-    subnets are set to None, which means to ignore the line and don't
-    reset the state variables keeping track of the headers."""
+    instead, it means a header with an object name was matched."""
 
     startpos = 0
     got = False
@@ -866,13 +836,8 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
         for retval in find_regex(line):
             if retval is None:
                 logging.debug("find_regex() found no match at all")
-                current_acl_name = None
                 break
             src, dst = retval
-            if src is None:
-                # Ignored line
-                logging.debug("find_regex() found ignored line")
-                break
             if isinstance(src, str):
                 assert isinstance(dst, str)
                 logging.debug("find_regex() found new header")
@@ -887,6 +852,12 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 break
             assert isinstance(src, Subnet)
             assert isinstance(dst, Subnet)
+
+            # If the current line is no longer part of an ACL header
+            # or object (or any other line that ACL_HEADER may match),
+            # set the state variable to None.
+            if not line.startswith(' '):
+                current_acl_name = None
 
             logging.debug('current_acl_name = %r', current_acl_name)
             if current_acl_name is not None:
