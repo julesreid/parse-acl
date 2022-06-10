@@ -35,7 +35,8 @@ This is also relevant when dealing with configurations that have an IP address a
     ip address 1.2.3.4 255.255.255.0
 
 Because the statement has a subnet mask and is stored as ```1.2.3.4/24```,
-it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will not match.
+it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will not match
+(although ```1.2.3.0/24 le 32``` will match that and all other host addresses in the subnet).
 
 ## Command-line options
 
