@@ -28,8 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
 import re
-import socket
-import struct
+from ipaddress import IPv4Network, NetmaskValueError
 import argparse
 import logging
 from itertools import product
@@ -38,25 +37,13 @@ from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
 
 # Set some types used for holding data
 #
-IP = int
 # For use when 3.9 is available
 #PrefixLength = Annotated[int, ValueRange(0, 32)]
 PrefixLength = int
 
-class Subnet(NamedTuple):
-    """Represent an IP address or subnet, with prefix length"""
-    ip: IP
-    prefix: PrefixLength = 32
-    def __repr__(self) -> str:
-        return 'Subnet(' + subnettoip(self) + ')'
-    def __str__(self) -> str:
-        if self.prefix == 32:
-            return inttoip(self.ip)
-        return subnettoip(self)
-
 class PrefixRange(NamedTuple):
     """Represent a subnet, with minimum (ge) and maximum (le) prefix lengths"""
-    subnet: Subnet
+    subnet: IPv4Network
     ge: PrefixLength
     le: PrefixLength
 
@@ -65,7 +52,7 @@ class PrefixRange(NamedTuple):
 # detected, then the tuple is (str, src), where the first string is the
 # entire line, and the second string is the name of the object.
 #
-SrcDst = Tuple[Union[Subnet, str], Union[Subnet, str]]
+SrcDst = Tuple[Union[IPv4Network, str], Union[IPv4Network, str]]
 
 # Return type for routines that return a SrcDst or a position in the
 # string to restart the search using finditer().
@@ -79,7 +66,7 @@ SrcDstPos = Union[SrcDst, int]
 # Each entry contains a list of subnets (or IP addresses) for that
 # object, even if some of the entries were derived recursively from
 # other objects.
-OBJECT_DICT: Dict[str, Set[Subnet]] = {}
+OBJECT_DICT: Dict[str, Set[IPv4Network]] = {}
 
 ### IP address, subnet and prefix list matching
 
@@ -301,129 +288,71 @@ EXTENDED_ASA_ACL_RE = r'''
 
 ### IP address utility functions
 
-def iptoint(ip: str) -> IP:
-    """Convert an IP address as a string into the internal IP format"""
-    result: IP = struct.unpack("!I", socket.inet_aton(ip))[0]
-    return result
-
-def inttoip(int_: IP) -> str:
-    """Convert the internal IP format into an IP address as a string"""
-    return socket.inet_ntoa(struct.pack("!I", int_))
-
-def iptosubnet(ip: str) -> Subnet:
-    """Convert a string with an IP address and prefix into the internal
-    Subnet format"""
-
-    parts = ip.split('/')
-    if len(parts) == 1:
-        return Subnet(ip=iptoint(parts[0]))
-    if len(parts) == 2:
-        return Subnet(ip=iptoint(parts[0]), prefix=int(parts[1]))
-    raise SyntaxError('subnet must have zero or one slashes')
-
-ANY = iptosubnet("0.0.0.0/0")
-
-def subnettoip(subnet: Subnet) -> str:
-    """Convert the internal Subnet format into a string with an IP address
-    and prefix"""
-    return inttoip(subnet.ip) + '/' + str(subnet.prefix)
-
-def maskof(length: PrefixLength) -> IP:
-    """Given a prefix length, return the internal representation IP subnet
-    mask.  This mask can be used in bitwise operations with an IP address."""
-    return (-1 << (32 - length)) & 0xffffffff
-
-def wildtonetmask(wild: str) -> IP:
-    """Convert a wildcard mask as a string into the internal IP format
-    of a net mask"""
-    wildmask = iptoint(wild)
-    netmask = (~wildmask) & 0xffffffff
-    return netmask
-
-def netmasktoprefix(mask: IP) -> PrefixLength:
-    """Given an internal representation of a subnet mask, return the
-    corresponding prefix length."""
-    prefix = 32
-
-    # Change netmask to a wildcard so that all of the 1s are on the right.
-    # Can't use wildtonetmask here since mask is not a string.
-    mask = (~mask) & 0xffffffff
-    while mask > 0:
-        mask >>= 1
-        prefix -= 1
-    return prefix
+ANY = IPv4Network("0.0.0.0/0")
 
 ### IP subnet matching
 
-def match_subnet(subnet1: Subnet, subnet2: Subnet,
+def match_subnet(subnet1: IPv4Network, subnet2: IPv4Network,
                  minlen: PrefixLength, maxlen: PrefixLength) -> bool:
     """Given two subnets, SUBNET1 and SUBNET2, test whether SUBNET1 is
     either a superset or subset of SUBNET2 that falls within the prefix
     length range between MINLEN and MAXLEN."""
-    def subnet_test(addr1: IP, addr2: IP, prefixlen: PrefixLength) -> bool:
-        """Test two IPv4 addresses, ADDR1 and ADDR2, for equality when
-        normalized to a common prefix length PREFIXLEN."""
-        mask = maskof(prefixlen)
-        return (addr1 & mask) == (addr2 & mask)
+    return subnet1.overlaps(subnet2) and minlen <= subnet1.prefixlen <= maxlen
 
-    len1 = subnet1.prefix
-    len2 = subnet2.prefix
-    containmentp = subnet_test(subnet1.ip, subnet2.ip, min(len1, len2))
-    return containmentp and minlen <= len1 <= maxlen
-
-def containment(subnet1: Subnet, subnet2: Subnet) -> bool:
+def containment(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     """Return True if subnet1 is a subnet of subnet2 or vice versa"""
     return match_subnet(subnet1, subnet2, 0, 32)
 
-def contains(subnet1: Subnet, subnet2: Subnet) -> bool:
+def contains(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     """Test if network (a.addr,a.mask) CONTAINS (b.addr,b.mask)
 
     Caveat: Don't assume that a or b is normalised."""
-    return match_subnet(subnet1, subnet2, 0, subnet2.prefix)
+    return match_subnet(subnet1, subnet2, 0, subnet2.prefixlen)
 
-def is_contained_in(subnet1: Subnet, subnet2: Subnet) -> bool:
+def is_contained_in(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     """Test if network SUBNET1 IS CONTAINED IN SUBNET2"""
-    return match_subnet(subnet1, subnet2, subnet2.prefix, 32)
+    return match_subnet(subnet1, subnet2, subnet2.prefixlen, 32)
 
-def matches_exact(subnet1: Subnet, subnet2: Subnet) -> bool:
+def matches_exact(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     """Test if subnet1 and subnet2 are identical, with the same IP
     and prefix length"""
-    return match_subnet(subnet1, subnet2, subnet2.prefix, subnet2.prefix)
+    return match_subnet(subnet1, subnet2, subnet2.prefixlen, subnet2.prefixlen)
 
-def match_subnet_prefixrange(subnet: Subnet, prefix: PrefixRange) -> bool:
+def match_subnet_prefixrange(subnet: IPv4Network, prefix: PrefixRange) -> bool:
     """Test if subnet falls within the subset or superset given
     by the prefix range prefix"""
     return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
 ### Parsing
 
-# XXX redefine to make more sense (e.g., "host" only is used in extended
-# acls but not in standard acls)
+def safe_IPv4Network(ipstr: str) -> IPv4Network:
+    """Convert a string to an IPv4Network but issue a warning if the network
+    is not normalized (host bits are not zero)"""
+    try:
+        net = IPv4Network(ipstr, strict=True)
+    except ValueError:
+        # An exception is raised if the network is not normalized
+        net = IPv4Network(ipstr, strict=False)
+        print("warning: %s normalized to %s" % (ipstr, net))
+    return net
+
 def range_to_net(re_range: str, re_host: Optional[str],
-                 re_net: str, re_mask: Optional[str],
-                 usewild: bool = True) -> Subnet:
+                 re_net: str, re_mask: Optional[str]) -> IPv4Network:
     """Given the parts of a regex matching an ACL in the text,
-    convert it to a subnet.  If usewild is set, reverse the bits of
-    the re_mask variable.  The regexes that are used in the matching
+    convert it to a subnet.  The regexes that are used in the matching
     are EXTENDED_ACL_RE, EXTENDED_ASA_ACL_RE, and STANDARD_ACL_RE."""
     if re_range.startswith('host '):
         assert re_host is not None
-        net = iptoint(re_host)
-        mask = 32
+        net = re_host
     elif re_range in ("any", "any4"):
-        net, mask = ANY
+        net = '0.0.0.0/0'
+    elif re_mask is None:
+        net = re_net
     else:
-        net = iptoint(re_net)
-        if re_mask is None:
-            mask = 32
-        elif usewild:
-            mask = netmasktoprefix(wildtonetmask(re_mask))
-        else:
-            mask = netmasktoprefix(iptoint(re_mask))
-    return Subnet(ip=net, prefix=mask)
+        net = re_net + '/' + re_mask
+    return safe_IPv4Network(net)
 
-def normalize_prefix_lengths(ip: IP,
-                             length: Optional[PrefixLength],
+def normalize_prefix_lengths(ip: IPv4Network,
                              ge: Optional[PrefixLength],
                              le: Optional[PrefixLength]) -> PrefixRange:
     """Fill in the parts of a prefix range using default or derived
@@ -432,8 +361,7 @@ def normalize_prefix_lengths(ip: IP,
     to the prefix length (except for special cases to match Cisco's
     prefix-list behavior)."""
 
-    if length is None:
-        length = 32
+    length = ip.prefixlen
     if le is None:
         if ge is None:
             ge = le = length
@@ -453,7 +381,7 @@ def normalize_prefix_lengths(ip: IP,
         raise SyntaxError('must have 0 <= length <= 32')
     if not 0 <= ge <= le <= 32:
         raise SyntaxError('must have 0 <= ge <= le <= 32')
-    return PrefixRange(Subnet(ip=ip, prefix=length), ge, le)
+    return PrefixRange(ip, ge, le)
 
 def safe_int(intstr: Optional[str]) -> Optional[int]:
     """Convert a string to an integer, or None is intstr is None"""
@@ -467,43 +395,37 @@ def parse_prefix_list(arg: str) -> PrefixRange:
     re_match = re.match(PREFIX_RE, arg, re.X)
     if not re_match:
         raise SyntaxError('invalid prefix range')
-    ip = iptoint(re_match.group(1))
-    length = safe_int(re_match.group(2))
+    ip = re_match.group(1)
+    length = re_match.group(2)
+    if length is not None:
+        ip += '/' + length
+    net = safe_IPv4Network(ip)
     ge = safe_int(re_match.group(3))
     le = safe_int(re_match.group(4))
-    return normalize_prefix_lengths(ip, length, ge, le)
+    return normalize_prefix_lengths(net, ge, le)
 
-def normalized(subnet: Subnet) -> bool:
-    """Return True if host portion of the IP address is all zeroes."""
-    ip = subnet.ip
-    length = subnet.prefix
-    return ip & maskof(length) == ip
-
-def addrmasktosubnet(straddr: str, strmask: str) -> Optional[Subnet]:
+def addrmasktosubnet(straddr: str, strmask: str) -> Optional[IPv4Network]:
     """Convert an IP address and a separate IP address used as
     a network mask into a subnet object.  For instance, convert
     "192.168.100.0", "255.255.255.0" into 192.168.100.0/24."""
 
     logging.debug("straddr = %r", straddr)
     logging.debug("strmask = %r", strmask)
-    addr = iptosubnet(straddr)
-    mask = iptosubnet(strmask)
-    logging.debug("addr = %r", addr)
-    logging.debug("mask = %r", mask)
-    preflen = netmasktoprefix(mask.ip)
-    if maskof(preflen) != mask.ip:
+    net = straddr + '/' + strmask
+    logging.debug("net = %r", net)
+    try:
+        subnet = IPv4Network(net, strict=False)
+    except NetmaskValueError:
         logging.debug('invalid mask for addr, returning None')
         return None
-    logging.debug("preflen = %r", preflen)
-    subnet = Subnet(ip=addr.ip, prefix=preflen)
     logging.debug("subnet = %r", subnet)
     return subnet
 
 def testsubnets(ipaddr1_str: str, ipaddr2_str: str,
                 minlen_str: str, maxlen_str: str) -> None:
     """Conduct various tests on the arguments, used for testing the script"""
-    ipaddr1 = iptosubnet(ipaddr1_str)
-    ipaddr2 = iptosubnet(ipaddr2_str)
+    ipaddr1 = IPv4Network(ipaddr1_str, strict=False)
+    ipaddr2 = IPv4Network(ipaddr2_str, strict=False)
     minlen = int(minlen_str)
     maxlen = int(maxlen_str)
     assert 0 <= minlen <= maxlen <= 32, (minlen, maxlen)
@@ -531,11 +453,7 @@ class PrefixRangeAction(argparse.Action):
                  option_string: Optional[str] = None) -> None:
         """Set the PrefixLength argument"""
         assert isinstance(values, str)
-        direction = 'source' if option_string == '-s' else 'destination'
         srcmatch = parse_prefix_list(values)
-        if not normalized(srcmatch.subnet):
-            print("warning: %s subnet not normalized (%s)"
-                  % (direction, subnettoip(srcmatch.subnet)))
         setattr(namespace, self.dest, srcmatch)
 
 def getoptions() -> argparse.Namespace:
@@ -615,7 +533,7 @@ def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
     yield re_match.group(lastidx + 0), re_match.group(lastidx + 1)
 
-def yield_object_subnets(obj_key: str) -> Iterable[Subnet]:
+def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
     assert obj_key in OBJECT_DICT, obj_key
@@ -623,27 +541,22 @@ def yield_object_subnets(obj_key: str) -> Iterable[Subnet]:
         logging.debug('obj_key value = %r', value)
         yield value
 
-def yield_single_subnet(subnet: Subnet) -> Iterable[Subnet]:
+def yield_single_subnet(subnet: IPv4Network) -> Iterable[IPv4Network]:
     """Accept a single argument subnet that will be yielded as needed"""
     yield subnet
 
-def handle_extended_acl(re_match: Match[str], lastidx: int,
-                        wildcard: bool) -> Iterable[SrcDst]:
-    """Extract values from the various formats for an extended ACL.
-    The wildcard variable can be set to True if the subnet mask is
-    inversed (such as Cisco routers)."""
+def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
+    """Extract values from the various formats for an extended ACL."""
 
     if re_match.group(lastidx + 4).startswith('object'):
         logging.debug('source address is object %r',
                       re_match.group(lastidx + 8))
         srciter = yield_object_subnets(re_match.group(lastidx + 8))
     else:
-        logging.debug("wildcard = %r", wildcard)
         src = range_to_net(re_range=re_match.group(lastidx + 4),
                            re_host=re_match.group(lastidx + 5),
                            re_net=re_match.group(lastidx + 6),
-                           re_mask=re_match.group(lastidx + 7),
-                           usewild=wildcard)
+                           re_mask=re_match.group(lastidx + 7))
         logging.debug("src = %r", src)
         srciter = yield_single_subnet(src)
 
@@ -658,8 +571,7 @@ def handle_extended_acl(re_match: Match[str], lastidx: int,
         dst = range_to_net(re_range=re_match.group(lastidx + 10),
                            re_host=re_match.group(lastidx + 11),
                            re_net=re_match.group(lastidx + 12),
-                           re_mask=re_match.group(lastidx + 13),
-                           usewild=wildcard)
+                           re_mask=re_match.group(lastidx + 13))
         logging.debug("dst = %r", dst)
         dstiter = yield_single_subnet(dst)
 
@@ -670,12 +582,16 @@ def handle_extended_acl(re_match: Match[str], lastidx: int,
 def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ACL_RE regex"""
     logging.debug("got EXTENDED_ACL_RE = %r", re_match.group(lastidx))
-    yield from handle_extended_acl(re_match, lastidx, wildcard=True)
+    # The only problem with using IPv4Network here is that there is no
+    # way to specify that the mask used for this ACL is a wild card
+    # host mask, so IPv4Network('0.0.0.0/0.0.0.0') gets interpreted
+    # as IPv4Network('0.0.0.0/0') instead of IPv4Network('0.0.0.0/32').
+    yield from handle_extended_acl(re_match, lastidx)
 
 def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ASA_ACL_RE regex"""
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
-    yield from handle_extended_acl(re_match, lastidx, wildcard=False)
+    yield from handle_extended_acl(re_match, lastidx)
 
 def net_or_grp_object_re(re_match: Match[str],
                          lastidx: int) -> Iterable[SrcDst]:
@@ -749,7 +665,7 @@ def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDstPo
 def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SUBNET_RE regex"""
     logging.debug("got SUBNET_RE = %r", re_match.group(lastidx))
-    src = iptosubnet(re_match.group(lastidx + 0))
+    src = safe_IPv4Network(re_match.group(lastidx + 0))
     dst = ANY
     yield src, dst
 
@@ -855,8 +771,8 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 # Create the object in the dict
                 OBJECT_DICT.setdefault(current_acl_obj, set())
                 break
-            assert isinstance(src, Subnet)
-            assert isinstance(dst, Subnet)
+            assert isinstance(src, IPv4Network)
+            assert isinstance(dst, IPv4Network)
 
             # If the current line is no longer part of an ACL header
             # or object (or any other line that ACL_HEADER may match),
