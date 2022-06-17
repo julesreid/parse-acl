@@ -8,6 +8,11 @@ network range.
 
 To do:
 
+* Match NAT statements
+* Show access list line numbers
+* Show remark for an access-list
+* List IP addresses for an object or all objects
+* Turn on/off line numbers
 * Match ranges (correctly accounting for overlaps, either in whole or part)
 
 Copyright © 2022 J. Cowley
