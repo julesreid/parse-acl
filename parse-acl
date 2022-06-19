@@ -291,6 +291,29 @@ EXTENDED_ASA_ACL_RE = r'''
     $
 '''
 
+OBJECT = r'''(\S+)'''
+INTF = r'''[a-zA-Z0-9_-]+'''
+TWICE_NAT_RE = r'''
+    ^nat[ ]
+    \(''' + INTF + r',' + INTF + r'''\)[ ]
+    (?:after-auto[ ])?
+    source[ ]
+    (?:static|dynamic)[ ]
+    (?:any|''' + OBJECT + r''')[ ]
+    (?:any|interface|''' + OBJECT + r''')
+    (?:[ ]+destination[ ]static
+        (?:[ ]''' + OBJECT + r'''[ ]''' + OBJECT + r'''
+            (?:[ ]service[ ]''' + OBJECT + r'''[ ]''' + OBJECT + r''')?
+        )?
+    )?
+    (?:[ ]inactive)?
+    (?:[ ]unidirectional)?
+    (?:[ ]no-proxy-arp)?
+    (?:[ ]route-lookup)?
+    (?:[ ]description[ ].*)?
+    $
+'''
+
 ### IP address utility functions
 
 ANY = IPv4Network("0.0.0.0/0")
@@ -630,6 +653,32 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     dst = ANY
     yield src, dst
 
+def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
+    """Match the TWICE_NAT_RE regex"""
+
+    def groupiter(idx: int) -> Iterable[IPv4Network]:
+        group = re_match.group(lastidx + idx)
+        logging.debug("group = %r", group)
+        if group is not None and group in OBJECT_DICT:
+            groupiter = yield_object_subnets(group)
+        else:
+            groupiter = yield_single_subnet(ANY)
+        return groupiter
+
+    logging.debug("got TWICE_NAT_RE = %r", re_match.group(lastidx))
+
+    # NAT statements generally have the format SRC1 SRC2 DST1 DST2,
+    # so pair up SRC1 and DST1 then SRC2 and DST2.
+
+    srciter = groupiter(1)
+    dstiter = groupiter(3)
+    yield from product(srciter, dstiter)
+
+    # If the nat statement matches "interface", use ANY instead (for now)
+    srciter = groupiter(2)
+    dstiter = groupiter(4)
+    yield from product(srciter, dstiter)
+
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
@@ -680,6 +729,7 @@ MATCH_RE_TABLE_RAW = {
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
     "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
     "STANDARD_ACL_RE": standard_acl_re,
+    "TWICE_NAT_RE": twice_nat_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
