@@ -67,7 +67,7 @@ SrcDstPos = Union[SrcDst, int]
 ### Network objects
 
 # Dictionary of subnets based on the name of the ACL header, the
-# network object,, or any other identifier from the configuration.
+# network object, or any other identifier from the configuration.
 # Each entry contains a list of subnets (or IP addresses) for that
 # object, even if some of the entries were derived recursively from
 # other objects.
