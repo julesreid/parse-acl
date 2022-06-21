@@ -300,17 +300,27 @@ TWICE_NAT_RE = r'''
     (?:after-auto[ ])?
     source[ ]
     (?:static|dynamic)[ ]
-    (?:any|''' + OBJECT + r''')[ ]
-    (?:any|interface|''' + OBJECT + r''')
-    (?:[ ]+destination[ ]static
-        (?:[ ]''' + OBJECT + r'''[ ]''' + OBJECT + r'''
-            (?:[ ]service[ ]''' + OBJECT + r'''[ ]''' + OBJECT + r''')?
-        )?
+    (?:any|''' + OBJECT + r''')
+    (?:[ ](?:any|interface|''' + OBJECT + r'''))?
+    (?:[ ]pat-pool[ ](?:\S+|interface)
+        (?:[ ]extended)?
+        (?:[ ]flat)?
+        (?:[ ]include-reserve)?
+        (?:[ ]round-robin)?
+        (?:[ ]dns)?
     )?
-    (?:[ ]inactive)?
+    (?:
+        [ ]+destination[ ]static[ ]
+        (?:interface|''' + OBJECT + r''')[ ]
+        (?:any|''' + OBJECT + r''')
+    )?
+    (?:[ ]service[ ]''' + OBJECT + r'''[ ]''' + OBJECT + r''')?
+    (?:[ ]net-to-net)?
+    (?:[ ]dns)?
     (?:[ ]unidirectional)?
     (?:[ ]no-proxy-arp)?
     (?:[ ]route-lookup)?
+    (?:[ ]inactive)?
     (?:[ ]description[ ].*)?
     $
 '''
