@@ -561,6 +561,14 @@ Examples:
                         help='test the arguments from the command line\n'
                              '(source1, source2, minlen, maxlen)',
                         action='extend')
+    object_group = parser.add_mutually_exclusive_group()
+    object_group.add_argument('-o', '--show-object',
+                              help='show the IP addresses for the object',
+                              dest='object')
+    object_group.add_argument('-O', '--show-objects',
+                              help='show the IP addresses for all objects',
+                              action='store_true',
+                              dest='objects')
 
     return parser.parse_args()
 
@@ -810,10 +818,14 @@ def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
                 yield None
             return
 
+# XXX this routine is getting overloaded and needs to be broken out
 def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
-                 logicalor: bool) -> None:
+                 logicalor: bool, printit: bool) -> None:
     """Parse the configuration and search for lines which match ACLs,
-    network objects, or other places IP addresses are used."""
+    network objects, or other places IP addresses are used.  If printit
+    is True, match the srcmatch and destmatch objects as the networks
+    are parsed.  Otherwise, the arguments are ignored and this routine
+    is used to capture the networks for all objects in OBJECT_DICT."""
 
     last_acl_name = None
     current_acl_name = None
@@ -853,6 +865,9 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 OBJECT_DICT[current_acl_obj].add(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
+            if not printit:
+                logging.debug('continue through loop for more networks')
+                continue
             # See if the src/dst from the config matches srcmatch/dstmatch
             match_src = match_subnet_prefixrange(src, srcmatch)
             match_dst = match_subnet_prefixrange(dst, dstmatch)
@@ -886,6 +901,8 @@ def main() -> None:
     assert isinstance(args.swap, bool)
     assert isinstance(args.duplicate, bool)
     assert isinstance(args.logicalor, bool)
+    assert isinstance(args.object, (str, type(None)))
+    assert isinstance(args.objects, bool)
 
     srcmatch = args.source
     dstmatch = args.destination
@@ -908,7 +925,20 @@ def main() -> None:
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
 
-    parse_config(srcmatch, dstmatch, args.logicalor)
+    parse_config(srcmatch, dstmatch, args.logicalor,
+                 printit=not (args.objects or args.object))
+
+    if args.objects:
+        for k, v in sorted(OBJECT_DICT.items()):
+            print(k)
+            for x in sorted(v):
+                print('', x, sep='\t')
+    elif args.object:
+        if args.object not in OBJECT_DICT:
+            raise SyntaxError('No such object found')
+        print(args.object)
+        for x in sorted(OBJECT_DICT[args.object]):
+            print('', x, sep='\t')
 
 if __name__ == '__main__':
     try:
