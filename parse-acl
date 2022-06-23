@@ -537,7 +537,7 @@ Examples:
                         default=PrefixRange(ANY, ge=0, le=32),
                         action=PrefixRangeAction,
                         metavar='DESTINATION')
-    parser.add_argument('-x', '--reverse',
+    parser.add_argument('-x', '--swap',
                         help='swap the source and destinaton addresses\n'
                              '(for convenience)',
                         action='store_true')
@@ -545,7 +545,7 @@ Examples:
                         help='duplicate the source address as the\n'
                              'destination address',
                         action='store_true')
-    parser.add_argument('-o', '--or',
+    parser.add_argument('-r', '--or',
                         help='use a logical-or operation instead of\n'
                              'logical-and between source and destination',
                         action='store_true',
@@ -883,7 +883,7 @@ def main() -> None:
     assert isinstance(args.source, PrefixRange)
     assert isinstance(args.destination, PrefixRange)
     assert isinstance(args.log_level, int)
-    assert isinstance(args.reverse, bool)
+    assert isinstance(args.swap, bool)
     assert isinstance(args.duplicate, bool)
     assert isinstance(args.logicalor, bool)
 
@@ -900,7 +900,7 @@ def main() -> None:
                     minlen_str=args.test[2], maxlen_str=args.test[3])
         sys.exit(0)
 
-    if args.reverse:
+    if args.swap:
         srcmatch, dstmatch = dstmatch, srcmatch
     if args.duplicate:
         dstmatch = srcmatch
