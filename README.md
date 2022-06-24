@@ -51,11 +51,13 @@ it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will 
 | ```-h```, ```--help``` |           show this help message and exit |
 | ```-s``` *SOURCE*, ```--source``` *SOURCE* | source prefix range to match in configuration |
 | ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* |                        destination prefix range to match in configuration
-|  ```-x```, ```--reverse``` |        swap the source and destinaton addresses (for convenience) |
+|  ```-x```, ```--swap``` |        swap the source and destinaton addresses (for convenience) |
 |  ```-p```, ```--duplicate``` |      duplicate the source address as the destination address |
-|  ```-o```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
+|  ```-r```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
 | ```-v```, ```--verbose``` |        be verbose |
 |  ```-t``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN*, ```--test``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN* | test the arguments from the command line |
+| ``` -o``` *OBJECT*, ```--show-object``` *OBJECT* |                        show the IP addresses for the object |
+| ```-O```, ```--show-objects``` |    show the IP addresses for all objects |
 
 A prefix range consists of an IP address (with an optional prefix
 length indicating a subnet), and two optional keywords that specify
