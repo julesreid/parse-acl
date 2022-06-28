@@ -40,7 +40,7 @@ import argparse
 import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
-                    Iterable, Tuple, Dict, Set)
+                    Iterable, Tuple, Dict, Set, Pattern)
 
 # Set some types used for holding data
 #
@@ -576,6 +576,10 @@ Examples:
                               help='show the IP addresses for all objects',
                               action='store_true',
                               dest='objects')
+    parser.add_argument('-l', '--resolve',
+                        help='process fqdn statements by resolving DNS',
+                        action='store_true',
+                        dest='resolver')
 
     return parser.parse_args()
 
@@ -777,10 +781,6 @@ MATCH_RE_TABLE_RAW = {
     "SUBNET_RE": subnet_re,
 }
 
-MATCH_RE_STR = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
-                        for re_str in MATCH_RE_TABLE_RAW)
-MATCH_RE = re.compile(MATCH_RE_STR, re.X)
-
 def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDstPos]:
     """Given an iterable of regex matches (from finditer()), dispatch
     to the helper functions based on the named group that matches.
@@ -811,7 +811,7 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDstPos]:
         yield from MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
                                                           re_match.lastindex)
 
-def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
+def find_regex(match_re: Pattern[str], line: str) -> Iterable[Optional[SrcDst]]:
     """Iterate through all of the different patterns that can be
     found in a line in the configuration that match an IP address or
     a subnet.  The patterns are dispatched based on the named group
@@ -826,7 +826,7 @@ def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
     got = False
     while True:
         logging.debug('finditer with pos = %r', startpos)
-        n = MATCH_RE.finditer(line, pos=startpos)
+        n = match_re.finditer(line, pos=startpos)
         for result in processgroups(n):
             if isinstance(result, int):
                 logging.debug('result is int = %r', result)
@@ -841,21 +841,32 @@ def find_regex(line: str) -> Iterable[Optional[SrcDst]]:
                 yield None
             return
 
+def compile_match_re(resolve: bool) -> Pattern[str]:
+    """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
+    If the resolve flag is set, allow matching fqdn statements."""
+    match_re_str = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
+                            for re_str in MATCH_RE_TABLE_RAW
+                            if re_str != "FQDN_RE" or resolve)
+    match_re = re.compile(match_re_str, re.X)
+    return match_re
+
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
-                 logicalor: bool, printit: bool) -> None:
+                 logicalor: bool, printit: bool, resolve: bool) -> None:
     """Parse the configuration and search for lines which match ACLs,
     network objects, or other places IP addresses are used.  If printit
     is True, match the srcmatch and destmatch objects as the networks
     are parsed.  Otherwise, the arguments are ignored and this routine
     is used to capture the networks for all objects in OBJECT_DICT."""
 
+    match_re = compile_match_re(resolve=resolve)
+
     last_acl_name = None
     current_acl_name = None
     for line_num, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
-        for retval in find_regex(line):
+        for retval in find_regex(match_re, line):
             if retval is None:
                 logging.debug("find_regex() found no match at all")
                 break
@@ -926,6 +937,7 @@ def main() -> None:
     assert isinstance(args.logicalor, bool)
     assert isinstance(args.object, (str, type(None)))
     assert isinstance(args.objects, bool)
+    assert isinstance(args.resolver, bool)
 
     srcmatch = args.source
     dstmatch = args.destination
@@ -949,7 +961,8 @@ def main() -> None:
     logging.debug("dstmatch = %r", dstmatch)
 
     parse_config(srcmatch, dstmatch, args.logicalor,
-                 printit=not (args.objects or args.object))
+                 printit=not (args.objects or args.object),
+                 resolve=args.resolver)
 
     if args.objects:
         for k, v in sorted(OBJECT_DICT.items()):
