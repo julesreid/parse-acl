@@ -35,6 +35,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import sys
 import re
 from ipaddress import IPv4Network, NetmaskValueError
+from socket import gethostbyname_ex, gaierror
 import argparse
 import logging
 from itertools import product
@@ -323,6 +324,12 @@ TWICE_NAT_RE = r'''
     (?:[ ]inactive)?
     (?:[ ]description[ ].*)?
     $
+'''
+
+HOSTNAME = r'(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]+\.?'
+FQDN_RE = r'''
+    [ ]+
+    fqdn[ ](?:v4[ ])?(''' + HOSTNAME + r''')
 '''
 
 ### IP address utility functions
@@ -698,6 +705,21 @@ def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     dstiter = groupiter(4)
     yield from product(srciter, dstiter)
 
+def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
+    """Match the FQDN_RE regex"""
+    logging.debug("got FQDN_RE = %r", re_match.group(lastidx))
+    fqdn = re_match.group(lastidx + 1)
+    logging.debug("fqdn = %r", fqdn)
+    try:
+        result = gethostbyname_ex(fqdn)
+    except gaierror as err:
+        logging.debug("got gaierror = %r", err)
+        return
+    logging.debug("result = %r", result)
+    for ipaddrstr in result[2]:
+        logging.debug("ipaddrstr = %r", ipaddrstr)
+        yield (IPv4Network(ipaddrstr), ANY)
+
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
@@ -749,6 +771,7 @@ MATCH_RE_TABLE_RAW = {
     "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
     "STANDARD_ACL_RE": standard_acl_re,
     "TWICE_NAT_RE": twice_nat_re,
+    "FQDN_RE": fqdn_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
