@@ -829,7 +829,7 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDst]:
         yield from MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
                                                           re_match.lastindex)
 
-def find_regex(match_re: Pattern[str], line: str) -> Iterable[Optional[SrcDst]]:
+def find_regex(match_re: Pattern[str], line: str) -> Iterable[SrcDst]:
     """Iterate through all of the different patterns that can be
     found in a line in the configuration that match an IP address or
     a subnet.  The patterns are dispatched based on the named group
@@ -841,7 +841,6 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[Optional[SrcDst]]:
     the position to start the search for the next iteration."""
 
     startpos = 0
-    got = False
     while True:
         logging.debug('finditer with pos = %r', startpos)
         n = match_re.finditer(line, pos=startpos)
@@ -853,11 +852,8 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[Optional[SrcDst]]:
                 startpos = result[1]
                 break
             logging.debug('result is obj, yielding')
-            got = True
             yield result
         else:
-            if not got:
-                yield None
             return
 
 def compile_match_re(resolve: bool) -> Pattern[str]:
@@ -887,9 +883,6 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
         for yieldval in find_regex(match_re, line):
-            if yieldval is None:
-                logging.debug("find_regex() found no match at all")
-                break
             assert isinstance(yieldval, tuple)
             matchtype, retval = yieldval
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
