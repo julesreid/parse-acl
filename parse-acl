@@ -59,10 +59,11 @@ class PrefixRange(NamedTuple):
 # detected, then the tuple is (str, src), where the first string is the
 # entire line, and the second string is the name of the object.
 #
-Matchtype = Literal['srcdst', 'position', 'header']
+Matchtype = Literal['srcdst', 'position', 'header', 'remark']
 SrcDst = Tuple[Matchtype, Union[Tuple[IPv4Network, IPv4Network],    # srcdst
                                 int,                                # position
-                                Tuple[str, str]]]                   # header
+                                Tuple[str, str],                    # header
+                                str]]                               # remark
 
 # Return type for routines that return a SrcDst or a position in the
 # string to restart the search using finditer().
@@ -152,6 +153,15 @@ ACL_HEADER = r'''
         |interface
     )[ ]
     (\S+)
+'''
+
+EXTENDED_ASA_ACL_REMARK_RE = r'''
+    ^
+    [ ]*
+    access-list[ ]
+    \S+[ ]
+    remark[ ]
+    .*
 '''
 
 ## Standard numbered
@@ -594,6 +604,13 @@ def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
     yield 'header', (re_match.group(lastidx + 0), re_match.group(lastidx + 1))
 
+def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
+    """Match the remark statement of a standard or extended ACL"""
+    logging.debug("got EXTENDED_ASA_ACL_REMARK_RE = %r",
+                  re_match.group(lastidx))
+    remark = re_match.group(lastidx)
+    yield 'remark', remark
+
 def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
@@ -776,6 +793,7 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 
 MATCH_RE_TABLE_RAW = {
     "ACL_HEADER": acl_header,
+    "EXTENDED_ASA_ACL_REMARK_RE": extended_asa_acl_remark_re,
     "EXTENDED_ACL_RE": extended_acl_re,
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
     "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
@@ -870,6 +888,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
 
     last_acl_name = None
     current_acl_name = None
+    current_remark = None
     for line_num, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
@@ -894,6 +913,13 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 current_acl_line = line_num
                 # Create the object in the dict
                 OBJECT_DICT.setdefault(current_acl_obj, set())
+                break
+            if matchtype == 'remark':
+                assert isinstance(retval, str)
+                current_remark = retval
+                current_remark_line = line_num
+                logging.debug("current_remark is %r", current_remark)
+                logging.debug("current_remark_line is %r", current_remark_line)
                 break
             if matchtype != 'srcdst':
                 assert False
@@ -932,6 +958,12 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                         assert current_acl_line is not None
                         print("%6d\t%s" % (current_acl_line, current_acl_name))
                         last_acl_name = current_acl_name
+                # Print remark if one
+                if current_remark:
+                    assert current_remark_line is not None
+                    # Only print immediately preceding remark
+                    if line_num == current_remark_line + 1:
+                        print("%6d\t%s" % (current_remark_line, current_remark))
                 print("%6d\t%s" % (line_num, line))
                 # Break now, otherwise the same line can be printed more
                 # than once
