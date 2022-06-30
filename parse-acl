@@ -10,11 +10,9 @@ To do:
 
 * Match NAT statements
 * Show access list line numbers
-* Show remark for an access-list
-* List IP addresses for an object or all objects
 * Turn on/off line numbers
-* Use DNS to resolve "fqdn" statements
 * Match ranges (correctly accounting for overlaps, either in whole or part)
+* Test cases
 
 Copyright © 2022 J. Cowley
 
@@ -54,21 +52,19 @@ class PrefixRange(NamedTuple):
     ge: PrefixLength
     le: PrefixLength
 
-# Return type for routines that match subnets.  The usual format is a
-# tuple with the source and destination subnets.  If a new header is
-# detected, then the tuple is (str, src), where the first string is the
-# entire line, and the second string is the name of the object.
+# Return type for routines that match subnets.  It is a two-element
+# tuple, where the first element is a string identifier that specifies
+# the type of the second element.  The usual format is type 'srcdst'
+# and a tuple with the source and destination subnets.  If a new header
+# is detected, the type is 'header' and a tuple of type (str, str),
+# where the first string is the entire line, and the second string
+# is the name of the object.
 #
 Matchtype = Literal['srcdst', 'position', 'header', 'remark']
 SrcDst = Tuple[Matchtype, Union[Tuple[IPv4Network, IPv4Network],    # srcdst
                                 int,                                # position
                                 Tuple[str, str],                    # header
                                 str]]                               # remark
-
-# Return type for routines that return a SrcDst or a position in the
-# string to restart the search using finditer().
-#
-SrcDstPos = Union[SrcDst, int]
 
 ### Network objects
 
@@ -145,7 +141,7 @@ IP_NAT_POOL_RE = r'''
 # ip access-list extended network-services-in
 
 # $1 = object name
-ACL_HEADER = r'''
+HEADER_RE = r'''
     ^
     (?:
         ip[ ]access-list[ ](?:standard|extended)
@@ -348,8 +344,6 @@ FQDN_RE = r'''
 ### IP address utility functions
 
 ANY = IPv4Network("0.0.0.0/0")
-
-### IP subnet matching
 
 def match_subnet(subnet1: IPv4Network, subnet2: IPv4Network,
                  minlen: PrefixLength, maxlen: PrefixLength) -> bool:
@@ -598,9 +592,9 @@ Examples:
 
 # Parse routines
 
-def acl_header(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
-    """Match the header of a standard or extended ACL"""
-    logging.debug("got ACL_HEADER = %r", re_match.group(lastidx))
+def header_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
+    """Match the header of a standard or extended ACL or object"""
+    logging.debug("got HEADER_RE = %r", re_match.group(lastidx))
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
     yield 'header', (re_match.group(lastidx + 0), re_match.group(lastidx + 1))
 
@@ -763,7 +757,7 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
         raise SyntaxError('invalid mask for address')
     yield 'srcdst', (src, dst)
 
-def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDstPos]:
+def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
@@ -792,7 +786,7 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     yield 'srcdst', (src, dst)
 
 MATCH_RE_TABLE_RAW = {
-    "ACL_HEADER": acl_header,
+    "HEADER_RE": header_re,
     "EXTENDED_ASA_ACL_REMARK_RE": extended_asa_acl_remark_re,
     "EXTENDED_ACL_RE": extended_acl_re,
     "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
@@ -805,7 +799,7 @@ MATCH_RE_TABLE_RAW = {
     "SUBNET_RE": subnet_re,
 }
 
-def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDstPos]:
+def processgroups(n: Iterable[Match[str]]) -> Iterable[SrcDst]:
     """Given an iterable of regex matches (from finditer()), dispatch
     to the helper functions based on the named group that matches.
     This is similar to the parser found in the Python documentation.
@@ -841,10 +835,10 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[Optional[SrcDst]]:
     a subnet.  The patterns are dispatched based on the named group
     to helper functions which extract more information.
 
-    If a match is found, return the source and destination subnets
-    found.  If only a source subnet was found, the destination will
-    be 0.0.0.0/0.  As a special case, if source address is a string
-    instead, it means a header with an object name was matched."""
+    If a match type 'srcdst', return the source and destination
+    subnets found.  If the match type is 'position', it indicates that
+    the regex matched too far and the value is an integer indicating
+    the position to start the search for the next iteration."""
 
     startpos = 0
     got = False
@@ -929,7 +923,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             assert isinstance(dst, IPv4Network)
 
             # If the current line is no longer part of an ACL header
-            # or object (or any other line that ACL_HEADER may match),
+            # or object (or any other line that HEADER_RE may match),
             # set the state variable to None.
             if not line.startswith(' '):
                 current_acl_name = None
