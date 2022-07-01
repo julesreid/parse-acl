@@ -61,10 +61,15 @@ class PrefixRange(NamedTuple):
 # is the name of the object.
 #
 Matchtype = Literal['srcdst', 'position', 'header', 'remark']
-SrcDst = Tuple[Matchtype, Union[Tuple[IPv4Network, IPv4Network],    # srcdst
-                                int,                                # position
-                                Tuple[str, str],                    # header
-                                str]]                               # remark
+Object = Union[Tuple[IPv4Network, IPv4Network],    # srcdst
+               int,                                # position
+               Tuple[str, str],                    # header
+               str]                                # remark
+
+class SrcDst(NamedTuple):
+    """Generic return type from the matching functions"""
+    matchtype: Matchtype
+    obj: Object
 
 ### Network objects
 
@@ -596,14 +601,15 @@ def header_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the header of a standard or extended ACL or object"""
     logging.debug("got HEADER_RE = %r", re_match.group(lastidx))
     # Possible to use group(lastidx + 1) here if just the ACL name is wanted
-    yield 'header', (re_match.group(lastidx + 0), re_match.group(lastidx + 1))
+    yield SrcDst('header', (re_match.group(lastidx + 0),
+                            re_match.group(lastidx + 1)))
 
 def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the remark statement of a standard or extended ACL"""
     logging.debug("got EXTENDED_ASA_ACL_REMARK_RE = %r",
                   re_match.group(lastidx))
     remark = re_match.group(lastidx)
-    yield 'remark', remark
+    yield SrcDst('remark', remark)
 
 def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
     """Yield the subnets from the network object obj_key"""
@@ -650,7 +656,7 @@ def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     logging.debug('srciter = %r', srciter)
     logging.debug('dstiter = %r', dstiter)
     for srcdst in product(srciter, dstiter):
-        yield 'srcdst', srcdst
+        yield SrcDst('srcdst', srcdst)
 
 def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the EXTENDED_ACL_RE regex"""
@@ -685,7 +691,7 @@ def net_or_grp_object_re(re_match: Match[str],
     # the IP subnet is added based on current_acl_obj in the main
     # loop in parse_config().
     for src in yield_object_subnets(key):
-        yield 'srcdst', (src, ANY)
+        yield SrcDst('srcdst', (src, ANY))
 
 def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
@@ -696,7 +702,7 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
                        re_mask=re_match.group(lastidx + 4))
     logging.debug("src = %r", src)
     dst = ANY
-    yield 'srcdst', (src, dst)
+    yield SrcDst('srcdst', (src, dst))
 
 def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the TWICE_NAT_RE regex"""
@@ -718,13 +724,13 @@ def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     srciter = groupiter(1)
     dstiter = groupiter(3)
     for srcdst in product(srciter, dstiter):
-        yield 'srcdst', srcdst
+        yield SrcDst('srcdst', srcdst)
 
     # If the nat statement matches "interface", use ANY instead (for now)
     srciter = groupiter(2)
     dstiter = groupiter(4)
     for srcdst in product(srciter, dstiter):
-        yield 'srcdst', srcdst
+        yield SrcDst('srcdst', srcdst)
 
 def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the FQDN_RE regex"""
@@ -739,7 +745,7 @@ def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     logging.debug("result = %r", result)
     for ipaddrstr in result[2]:
         logging.debug("ipaddrstr = %r", ipaddrstr)
-        yield 'srcdst', (IPv4Network(ipaddrstr), ANY)
+        yield SrcDst('srcdst', (IPv4Network(ipaddrstr), ANY))
 
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the IP_NAT_POOL_RE regex"""
@@ -751,11 +757,11 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     if src is None:
         raise SyntaxError('invalid mask for address')
     dst = ANY
-    yield 'srcdst', (src, dst)
+    yield SrcDst('srcdst', (src, dst))
     src = addrmasktosubnet(end, msk)
     if src is None:
         raise SyntaxError('invalid mask for address')
-    yield 'srcdst', (src, dst)
+    yield SrcDst('srcdst', (src, dst))
 
 def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SUBNET_WITH_MASK_RE regex"""
@@ -764,26 +770,27 @@ def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     msk = re_match.group(lastidx + 2)
     src = addrmasktosubnet(net, msk)
     if src is None:
-        subnet = list(subnet_re(re_match, lastidx + 1))
-        assert len(subnet) == 1
-        logging.debug('successful subnet_re() = %r', subnet[0])
-        yield 'srcdst', subnet[0][1]
+        subnetlist = list(subnet_re(re_match, lastidx + 1))
+        assert len(subnetlist) == 1
+        subnet = subnetlist[0]
+        logging.debug('successful subnet_re() = %r', subnet)
+        yield subnet
 
         new_index = lastidx + 2
         new_startpos = re_match.start(new_index)
         logging.debug('new_index = %r', new_index)
         logging.debug('re_match.start(new_index) = %r', new_startpos)
-        yield 'position', new_startpos
+        yield SrcDst('position', new_startpos)
     else:
         dst = ANY
-        yield 'srcdst', (src, dst)
+        yield SrcDst('srcdst', (src, dst))
 
 def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the SUBNET_RE regex"""
     logging.debug("got SUBNET_RE = %r", re_match.group(lastidx))
     src = safe_IPv4Network(re_match.group(lastidx + 0))
     dst = ANY
-    yield 'srcdst', (src, dst)
+    yield SrcDst('srcdst', (src, dst))
 
 MATCH_RE_TABLE_RAW = {
     "HEADER_RE": header_re,
@@ -845,11 +852,10 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[SrcDst]:
         logging.debug('finditer with pos = %r', startpos)
         n = match_re.finditer(line, pos=startpos)
         for result in processgroups(n):
-            assert isinstance(result, tuple)
-            if result[0] == 'position':
-                assert isinstance(result[1], int)
-                logging.debug('result is int = %r', result[1])
-                startpos = result[1]
+            if result.matchtype == 'position':
+                assert isinstance(result.obj, int)
+                startpos = result.obj
+                logging.debug('startpos is %r', startpos)
                 break
             logging.debug('result is obj, yielding')
             yield result
@@ -883,7 +889,6 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", line_num, line)
         for yieldval in find_regex(match_re, line):
-            assert isinstance(yieldval, tuple)
             matchtype, retval = yieldval
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
             if matchtype == 'header':
