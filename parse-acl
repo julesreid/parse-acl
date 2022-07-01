@@ -862,25 +862,26 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[SrcDst]:
         else:
             return
 
-def compile_match_re(resolve: bool) -> Pattern[str]:
+def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
     If the resolve flag is set, allow matching fqdn statements."""
     match_re_str = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
                             for re_str in MATCH_RE_TABLE_RAW
-                            if re_str != "FQDN_RE" or resolve)
+                            if re_str != "FQDN_RE" or args.resolver)
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
-                 logicalor: bool, printit: bool, resolve: bool) -> None:
+                 logicalor: bool, printit: bool,
+                 args: argparse.Namespace) -> None:
     """Parse the configuration and search for lines which match ACLs,
     network objects, or other places IP addresses are used.  If printit
     is True, match the srcmatch and destmatch objects as the networks
     are parsed.  Otherwise, the arguments are ignored and this routine
     is used to capture the networks for all objects in OBJECT_DICT."""
 
-    match_re = compile_match_re(resolve=resolve)
+    match_re = compile_match_re(args=args)
 
     last_acl_name = None
     current_acl_name = None
@@ -1002,7 +1003,7 @@ def main() -> None:
 
     parse_config(srcmatch, dstmatch, args.logicalor,
                  printit=not (args.objects or args.object),
-                 resolve=args.resolver)
+                 args=args)
 
     if args.objects:
         for k, v in sorted(OBJECT_DICT.items()):
