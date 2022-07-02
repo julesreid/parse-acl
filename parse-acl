@@ -297,12 +297,23 @@ EXTENDED_ASA_ACL_RE = r'''
         |object(?:-group)?[ ](\S+)
     )
     (?:
-        [ ](?:eq|gt)[ ]\S+
+        [ ](?:alternate-address|conversion-error|echo(?:-reply)?
+              |information-(?:reply|request)|mask-(?:reply|request)
+              |mobile-redirect|parameter-problem|redirect
+              |router-(?:advertisement|solicitation)|source-quench
+              |time-exceeded|timestamp-(?:reply|request)|traceroute
+              |unreachable
+           )
+        |[ ](?:eq|neq|gt|lt)[ ]\S+
         |[ ]range[ ]\S+[ ]\S+
         |[ ]object(?:-group)?[ ](\S+)
     )?
-    (?:[ ]log)?
-    (?:[ ]debugging)?
+    (?:[ ]log
+       [ ](?:debugging|informational|notifications|warnings|errors|critical
+                 |alerts|emergencies)
+    )?
+    (?:[ ]interval[ ]\d+)?
+    (?:[ ]time-range[ ]\S+)?
     [ ]*
     $
 '''
