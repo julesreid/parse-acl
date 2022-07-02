@@ -699,7 +699,7 @@ def net_or_grp_object_re(re_match: Match[str],
     # Any expansion here ends up in not only the original place where
     # the subnet was defined, but also in any further expansions.
     # That is, there is no need for recursion here.  This is because
-    # the IP subnet is added based on current_acl_obj in the main
+    # the IP subnet is added based on header_obj in the main
     # loop in parse_config().
     for src in yield_object_subnets(key):
         yield SrcDst('srcdst', (src, ANY))
@@ -894,34 +894,35 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
 
     match_re = compile_match_re(args=args)
 
-    last_acl_name = None
-    current_acl_name = None
+    header_last = None
+    header_line = None
     current_remark = None
-    for line_num, line in enumerate(sys.stdin, start=1):
+    for linenum, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
-        logging.debug("linenum = %r, line = %r", line_num, line)
+        logging.debug("linenum = %r, line = %r", linenum, line)
         for yieldval in find_regex(match_re, line):
             matchtype, retval = yieldval
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
             if matchtype == 'header':
                 assert isinstance(retval, tuple)
-                src, dst = retval
-                assert isinstance(src, str)
-                assert isinstance(dst, str)
+                # line_val is entire line, obj_val is object name
+                line_val, obj_val = retval
+                assert isinstance(line_val, str)
+                assert isinstance(obj_val, str)
                 logging.debug("find_regex() found new header")
-                logging.debug("src = %r", src)
-                logging.debug("dst = %r", dst)
+                logging.debug("line_val = %r", line_val)
+                logging.debug("obj_val = %r", obj_val)
                 # New header for network object
-                current_acl_name = src          # src is entire line
-                current_acl_obj = dst           # dst is object name
-                current_acl_line = line_num
+                header_line = line_val
+                header_obj = obj_val
+                header_linenum = linenum
                 # Create the object in the dict
-                OBJECT_DICT.setdefault(current_acl_obj, set())
+                OBJECT_DICT.setdefault(header_obj, set())
                 break
             if matchtype == 'remark':
                 assert isinstance(retval, str)
                 current_remark = retval
-                current_remark_line = line_num
+                current_remark_line = linenum
                 logging.debug("current_remark is %r", current_remark)
                 logging.debug("current_remark_line is %r", current_remark_line)
                 break
@@ -936,13 +937,13 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             # or object (or any other line that HEADER_RE may match),
             # set the state variable to None.
             if not line.startswith(' '):
-                current_acl_name = None
+                header_line = None
 
-            logging.debug('current_acl_name = %r', current_acl_name)
-            if current_acl_name is not None:
-                logging.debug('current_acl_obj = %r', current_acl_obj)
+            logging.debug('header_line = %r', header_line)
+            if header_line is not None:
+                logging.debug('header_obj = %r', header_obj)
                 # Save the src (address of object) using the current object name
-                OBJECT_DICT[current_acl_obj].add(src)
+                OBJECT_DICT[header_obj].add(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
             if not printit:
@@ -953,22 +954,21 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             match_dst = match_subnet_prefixrange(dst, dstmatch)
             if match_src or match_dst if logicalor else match_src and match_dst:
                 logging.debug('got match')
-                if current_acl_name is not None:
-                    logging.debug('current_acl_line = %r', current_acl_line)
-                    logging.debug('last_acl_name = %r', last_acl_name)
-                    if (last_acl_name is None
-                            or last_acl_name != current_acl_name):
+                if header_line is not None:
+                    logging.debug('header_linenum = %r', header_linenum)
+                    logging.debug('header_last = %r', header_last)
+                    if not (header_last and header_last == header_line):
                         # Header for the ACL changed, so print it now
-                        assert current_acl_line is not None
-                        print("%6d\t%s" % (current_acl_line, current_acl_name))
-                        last_acl_name = current_acl_name
+                        assert header_linenum is not None
+                        print("%6d\t%s" % (header_linenum, header_line))
+                        header_last = header_line
                 # Print remark if one
                 if current_remark:
                     assert current_remark_line is not None
                     # Only print immediately preceding remark
-                    if line_num == current_remark_line + 1:
+                    if linenum == current_remark_line + 1:
                         print("%6d\t%s" % (current_remark_line, current_remark))
-                print("%6d\t%s" % (line_num, line))
+                print("%6d\t%s" % (linenum, line))
                 # Break now, otherwise the same line can be printed more
                 # than once
                 break
