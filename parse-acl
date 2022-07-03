@@ -60,11 +60,11 @@ class PrefixRange(NamedTuple):
 # where the first string is the entire line, and the second string
 # is the name of the object.
 #
-Matchtype = Literal['srcdst', 'position', 'header', 'remark']
+Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname']
 Object = Union[Tuple[IPv4Network, IPv4Network],    # srcdst
                int,                                # position
                Tuple[str, str],                    # header
-               str]                                # remark
+               str]                                # remark, aclname
 
 class SrcDst(NamedTuple):
     """Generic return type from the matching functions"""
@@ -160,7 +160,7 @@ EXTENDED_ASA_ACL_REMARK_RE = r'''
     ^
     [ ]*
     access-list[ ]
-    \S+[ ]
+    (\S+)[ ]
     remark[ ]
     .*
 '''
@@ -231,8 +231,9 @@ EXTENDED_ACL_RE = r'''
     (?:
         access-list[ ]\d+
     )?
+    ()
     [ ]
-    (permit|deny)[ ]+
+    (?:permit|deny)[ ]+
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
     ()
     [ ]
@@ -254,7 +255,7 @@ EXTENDED_ACL_RE = r'''
 # access-list Internal_nat0_outbound extended
 #             permit ip 172.16.11.48 255.255.255.240 host 172.16.11.25
 
-# $1 = permit|deny
+# $1 = ACL name
 # $2 = protocol
 # $3 = protocol object name or None
 # $4 = source IP address (all)
@@ -273,9 +274,9 @@ EXTENDED_ASA_ACL_RE = r'''
     ^
     [ ]*
     access-list[ ]
-    \S+[ ]
+    (\S+)[ ]
     (?:extended[ ])?
-    (permit|deny)[ ]
+    (?:permit|deny)[ ]
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf
      |pcp|pim|object(?:-group)?[ ](\S+))[ ]
     (
@@ -603,8 +604,22 @@ Examples:
                         help='process fqdn statements by resolving DNS',
                         action='store_true',
                         dest='resolver')
+    parser.add_argument('-n', '--line-number',
+                        help=('prefix each line of output with the\n'
+                              '1-based line number within its input file'),
+                        action='store_true',
+                        dest='linenumber')
+    parser.add_argument('-a', '--acl-lines',
+                        help='prefix ACLs with the 1-based line number',
+                        action='store_true',
+                        dest='acllines')
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if not args.linenumber and args.acllines:
+        parser.error('cannot have -a without -n')
+
+    return args
 
 # Parse routines
 
@@ -619,6 +634,8 @@ def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[S
     """Match the remark statement of a standard or extended ACL"""
     logging.debug("got EXTENDED_ASA_ACL_REMARK_RE = %r",
                   re_match.group(lastidx))
+    logging.debug('aclname = %r', re_match.group(lastidx + 1))
+    yield SrcDst('aclname', re_match.group(lastidx + 1))
     remark = re_match.group(lastidx)
     yield SrcDst('remark', remark)
 
@@ -637,6 +654,8 @@ def yield_single_subnet(subnet: IPv4Network) -> Iterable[IPv4Network]:
 def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Extract values from the various formats for an extended ACL."""
 
+    logging.debug('aclname = %r', re_match.group(lastidx + 1))
+    yield SrcDst('aclname', re_match.group(lastidx + 1))
     if re_match.group(lastidx + 4).startswith('object'):
         logging.debug('source address is object %r',
                       re_match.group(lastidx + 8))
@@ -882,6 +901,23 @@ def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
+def printline(linenum: int, acl_linenum: Optional[int],
+              line: str, args: argparse.Namespace) -> None:
+    """Print a line from the configuration"""
+
+    if not args.linenumber:
+        print(line)
+        return
+    if not args.acllines:
+        print("%6d\t%s" % (linenum, line))
+        return
+    if acl_linenum is None:
+        aclline = ''
+    else:
+        # acl_linenum is relative to linenum
+        aclline = '%6d' % (linenum - acl_linenum + 1)
+    print("%s\t%s" % (aclline, line))
+
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                  logicalor: bool, printit: bool,
@@ -897,11 +933,12 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
     header_last = None
     header_line = None
     current_remark = None
+    aclname_last = None
     for linenum, line in enumerate(sys.stdin, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
-        for yieldval in find_regex(match_re, line):
-            matchtype, retval = yieldval
+        aclname = None
+        for matchtype, retval in find_regex(match_re, line):
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
             if matchtype == 'header':
                 assert isinstance(retval, tuple)
@@ -910,21 +947,37 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 assert isinstance(line_val, str)
                 assert isinstance(obj_val, str)
                 logging.debug("find_regex() found new header")
-                logging.debug("line_val = %r", line_val)
-                logging.debug("obj_val = %r", obj_val)
                 # New header for network object
                 header_line = line_val
                 header_obj = obj_val
                 header_linenum = linenum
+                logging.debug("header_line = %r", header_line)
+                logging.debug("header_obj = %r", header_obj)
                 # Create the object in the dict
                 OBJECT_DICT.setdefault(header_obj, set())
                 break
+            if matchtype == 'aclname':
+                assert isinstance(retval, str)
+                aclname = retval
+                logging.debug("aclname is %r", aclname)
+                continue
+
+            aclname_linenum: Optional[int]
+            if aclname:
+                if aclname != aclname_last:
+                    # Record the linenum where an ACL starts for the first time
+                    aclname_linenum = linenum
+            else:
+                aclname_linenum = None
+            aclname_last = aclname
+
             if matchtype == 'remark':
                 assert isinstance(retval, str)
                 current_remark = retval
                 current_remark_line = linenum
                 logging.debug("current_remark is %r", current_remark)
                 logging.debug("current_remark_line is %r", current_remark_line)
+                header_line = None
                 break
             if matchtype != 'srcdst':
                 assert False
@@ -932,12 +985,6 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             src, dst = retval
             assert isinstance(src, IPv4Network)
             assert isinstance(dst, IPv4Network)
-
-            # If the current line is no longer part of an ACL header
-            # or object (or any other line that HEADER_RE may match),
-            # set the state variable to None.
-            if not line.startswith(' '):
-                header_line = None
 
             logging.debug('header_line = %r', header_line)
             if header_line is not None:
@@ -954,26 +1001,35 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
             match_dst = match_subnet_prefixrange(dst, dstmatch)
             if match_src or match_dst if logicalor else match_src and match_dst:
                 logging.debug('got match')
-                if header_line is not None:
-                    logging.debug('header_linenum = %r', header_linenum)
-                    logging.debug('header_last = %r', header_last)
-                    if not (header_last and header_last == header_line):
-                        # Header for the ACL changed, so print it now
-                        assert header_linenum is not None
-                        print("%6d\t%s" % (header_linenum, header_line))
-                        header_last = header_line
+                if header_line is not None and header_line != header_last:
+                    # Header for the ACL changed, so print it now
+                    assert header_linenum is not None
+                    assert aclname_linenum is None
+                    printline(header_linenum, None, header_line, args)
+                    header_last = header_line
                 # Print remark if one
                 if current_remark:
-                    assert current_remark_line is not None
                     # Only print immediately preceding remark
-                    if linenum == current_remark_line + 1:
-                        print("%6d\t%s" % (current_remark_line, current_remark))
-                print("%6d\t%s" % (linenum, line))
+                    assert current_remark_line is not None
+                    assert linenum == current_remark_line + 1
+                    printline(current_remark_line, aclname_linenum,
+                              current_remark, args)
+                printline(linenum, aclname_linenum, line, args)
+                # Remarks are only relevant for one line only
+                current_remark = None
                 # Break now, otherwise the same line can be printed more
                 # than once
                 break
             # No match this time, but iterate for more
             logging.debug('no match')
+        else:
+            # If the current line is no longer part of an ACL header
+            # or object (or any other line that HEADER_RE may match),
+            # set the state variable to None.
+            if not line.startswith(' '):
+                header_line = None
+            # Remarks are only relevant for one line only
+            current_remark = None
 
 ### Main program
 
