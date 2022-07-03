@@ -274,7 +274,7 @@ EXTENDED_ASA_ACL_RE = r'''
     [ ]*
     access-list[ ]
     \S+[ ]
-    extended[ ]
+    (?:extended[ ])?
     (permit|deny)[ ]
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf
      |pcp|pim|object(?:-group)?[ ](\S+))[ ]
@@ -310,7 +310,7 @@ EXTENDED_ASA_ACL_RE = r'''
     )?
     (?:[ ]log
        [ ](?:debugging|informational|notifications|warnings|errors|critical
-                 |alerts|emergencies)
+                 |alerts|emergencies|[0-7])
     )?
     (?:[ ]interval[ ]\d+)?
     (?:[ ]time-range[ ]\S+)?
