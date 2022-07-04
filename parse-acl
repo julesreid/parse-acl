@@ -181,20 +181,26 @@ EXTENDED_ASA_ACL_REMARK_RE = r'''
 #  permit 10.2.3.0 0.0.0.255
 #  permit 10.10.21.0 0.0.0.255
 
-# $1 = permit/deny
-# $2 = any or IP and mask
-# $3 = IP
-# $4 = subnet mask or None
+## ASA standard named
+
+# access-list example standard permit host 10.11.12.13
+
+# $1 = ACL name
+# $2 = any, host, or IP and mask
+# $3 = source host IP address or None
+# $4 = IP or None
+# $5 = subnet mask or None
 STANDARD_ACL_RE = r'''
     ^
     [ ]*
     (?:
-        access-list[ ]\d+
+        access-list[ ](?:\d+|(\S+)[ ]standard)
     )?
     [ ]
-    (permit|deny)[ ]+
+    (?:permit|deny)[ ]+
     (
         any
+        | host[ ](''' + IP_ADDR + r''')
         | (''' + IP_ADDR + r''')
           (?:
               [ ](''' + IP_ADDR + r''')
@@ -726,10 +732,16 @@ def net_or_grp_object_re(re_match: Match[str],
 def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Match the STANDARD_ACL_RE regex"""
     logging.debug("got STANDARD_ACL_RE = %r", re_match.group(lastidx))
+
+    aclname = re_match.group(lastidx + 1)
+    if aclname is not None:
+        logging.debug('aclname = %r', aclname)
+        yield SrcDst('aclname', aclname)
+
     src = range_to_net(re_range=re_match.group(lastidx + 2),
-                       re_host=None,
-                       re_net=re_match.group(lastidx + 3),
-                       re_mask=re_match.group(lastidx + 4))
+                       re_host=re_match.group(lastidx + 3),
+                       re_net=re_match.group(lastidx + 4),
+                       re_mask=re_match.group(lastidx + 5))
     logging.debug("src = %r", src)
     dst = ANY
     yield SrcDst('srcdst', (src, dst))
