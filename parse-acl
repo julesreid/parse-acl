@@ -38,7 +38,8 @@ import argparse
 import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
-                    Iterable, Tuple, Dict, Set, Pattern, Literal)
+                    Iterable, Tuple, Dict, Set, Pattern, Literal, List,
+                    TextIO)
 
 # Set some types used for holding data
 #
@@ -619,6 +620,9 @@ Examples:
                         help='prefix ACLs with the 1-based line number',
                         action='store_true',
                         dest='acllines')
+    parser.add_argument('configs',
+                        nargs='*',
+                        help='configuration file(s) to read')
 
     args = parser.parse_args()
 
@@ -917,9 +921,11 @@ def printline(linenum: int, acl_linenum: Optional[int],
               line: str, args: argparse.Namespace) -> None:
     """Print a line from the configuration"""
 
+    assert isinstance(args.linenumber, bool)
     if not args.linenumber:
         print(line)
         return
+    assert isinstance(args.acllines, bool)
     if not args.acllines:
         print("%6d\t%s" % (linenum, line))
         return
@@ -930,8 +936,25 @@ def printline(linenum: int, acl_linenum: Optional[int],
         aclline = '%6d' % (linenum - acl_linenum + 1)
     print("%s\t%s" % (aclline, line))
 
+def getfiledescs(filenames: List[str]) -> Iterable[Tuple[Optional[str],
+                                                         TextIO]]:
+    """Given a list of file names, return each one as an open file descriptor.
+    If the list is empty, return stdin."""
+    if len(filenames) == 0:
+        yield None, sys.stdin
+        return
+    for filename in filenames:
+        logging.debug("filename = %r", filename)
+        try:
+            filedesc = open(filename)
+        except OSError as err:
+            print(f'{filename}: {err}', file=sys.stderr)
+            continue
+        yield filename, filedesc
+
 # XXX this routine is getting overloaded and needs to be broken out
-def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
+def parse_config(filedesc: TextIO,
+                 srcmatch: PrefixRange, dstmatch: PrefixRange, /,
                  logicalor: bool, printit: bool,
                  args: argparse.Namespace) -> None:
     """Parse the configuration and search for lines which match ACLs,
@@ -946,7 +969,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
     header_line = None
     current_remark = None
     aclname_last = None
-    for linenum, line in enumerate(sys.stdin, start=1):
+    for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
         aclname = None
@@ -972,6 +995,7 @@ def parse_config(srcmatch: PrefixRange, dstmatch: PrefixRange,
                 assert isinstance(retval, str)
                 aclname = retval
                 logging.debug("aclname is %r", aclname)
+                header_line = None
                 continue
 
             aclname_linenum: Optional[int]
@@ -1049,21 +1073,15 @@ def main() -> None:
     """Main routine"""
 
     args = getoptions()
+
     assert isinstance(args.source, PrefixRange)
     assert isinstance(args.destination, PrefixRange)
-    assert isinstance(args.log_level, int)
-    assert isinstance(args.swap, bool)
-    assert isinstance(args.duplicate, bool)
-    assert isinstance(args.logicalor, bool)
-    assert isinstance(args.object, (str, type(None)))
-    assert isinstance(args.objects, bool)
-    assert isinstance(args.resolver, bool)
-
     srcmatch = args.source
     dstmatch = args.destination
 
     # Set up logging
     log_format = "%(levelname)s:%(funcName)s:%(lineno)d:%(message)s"
+    assert isinstance(args.log_level, int)
     logging.basicConfig(level=args.log_level, format=log_format)
 
     if args.test:
@@ -1072,29 +1090,42 @@ def main() -> None:
                     minlen_str=args.test[2], maxlen_str=args.test[3])
         sys.exit(0)
 
+    assert isinstance(args.swap, bool)
     if args.swap:
         srcmatch, dstmatch = dstmatch, srcmatch
+    assert isinstance(args.duplicate, bool)
     if args.duplicate:
         dstmatch = srcmatch
 
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
 
-    parse_config(srcmatch, dstmatch, args.logicalor,
-                 printit=not (args.objects or args.object),
-                 args=args)
+    assert isinstance(args.logicalor, bool)
+    assert isinstance(args.objects, bool)
+    assert isinstance(args.object, (str, type(None)))
+    filenames = args.configs
+    assert isinstance(filenames, list)
+    for filename, filedesc in getfiledescs(filenames):
+        OBJECT_DICT.clear()
+        if filename is not None and len(filenames) > 1:
+            print()
+            print(filename + ':')
 
-    if args.objects:
-        for k, v in sorted(OBJECT_DICT.items()):
-            print(k)
-            for x in sorted(v):
+        parse_config(filedesc, srcmatch, dstmatch, logicalor=args.logicalor,
+                     printit=not (args.objects or args.object),
+                     args=args)
+
+        if args.objects:
+            for k, v in sorted(OBJECT_DICT.items()):
+                print(k)
+                for x in sorted(v):
+                    print('', x, sep='\t')
+        elif args.object:
+            if args.object not in OBJECT_DICT:
+                raise SyntaxError('No such object found')
+            print(args.object)
+            for x in sorted(OBJECT_DICT[args.object]):
                 print('', x, sep='\t')
-    elif args.object:
-        if args.object not in OBJECT_DICT:
-            raise SyntaxError('No such object found')
-        print(args.object)
-        for x in sorted(OBJECT_DICT[args.object]):
-            print('', x, sep='\t')
 
 if __name__ == '__main__':
     try:
