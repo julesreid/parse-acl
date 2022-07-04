@@ -9,8 +9,6 @@ network range.
 To do:
 
 * Match NAT statements
-* Show access list line numbers
-* Turn on/off line numbers
 * Match ranges (correctly accounting for overlaps, either in whole or part)
 * Test cases
 
