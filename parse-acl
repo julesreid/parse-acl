@@ -1103,10 +1103,11 @@ def main() -> None:
     assert isinstance(args.object, (str, type(None)))
     filenames = args.configs
     assert isinstance(filenames, list)
-    for filename, filedesc in getfiledescs(filenames):
+    for n, (filename, filedesc) in enumerate(getfiledescs(filenames)):
         OBJECT_DICT.clear()
         if filename is not None and len(filenames) > 1:
-            print()
+            if n > 0:
+                print()
             print(filename + ':')
 
         parse_config(filedesc, srcmatch, dstmatch, logicalor=args.logicalor,
