@@ -662,8 +662,11 @@ def yield_single_subnet(subnet: IPv4Network) -> Iterable[IPv4Network]:
 def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
     """Extract values from the various formats for an extended ACL."""
 
-    logging.debug('aclname = %r', re_match.group(lastidx + 1))
-    yield SrcDst('aclname', re_match.group(lastidx + 1))
+    aclname = re_match.group(lastidx + 1)
+    if aclname:
+        logging.debug('aclname = %r', aclname)
+        yield SrcDst('aclname', aclname)
+
     if re_match.group(lastidx + 4).startswith('object'):
         logging.debug('source address is object %r',
                       re_match.group(lastidx + 8))
