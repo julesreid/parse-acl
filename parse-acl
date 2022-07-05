@@ -650,7 +650,10 @@ def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[S
 def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
-    assert obj_key in OBJECT_DICT, obj_key
+    if obj_key not in OBJECT_DICT:
+        raise SyntaxError('Network object %s not found '
+                          '-- possibly corrupt configuration?'
+                          % obj_key)
     for value in OBJECT_DICT[obj_key]:
         logging.debug('obj_key value = %r', value)
         yield value
@@ -681,9 +684,17 @@ def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[SrcDst]:
 
     if re_match.group(lastidx + 10).startswith('object'):
         dstgroup = re_match.group(lastidx + 14)
+        logging.debug('dstgroup = %r', dstgroup)
         if dstgroup not in OBJECT_DICT:
+            # The destination object-group is a service object, not network
             logging.debug('had to backtrack to get dstgroup')
-            dstgroup = re_match.group(lastidx + 9)
+            # This test is somewhat ugly
+            dstgroup_test = re_match.group(lastidx + 9)
+            if dstgroup_test is None:
+                raise SyntaxError('Network object %s not found '
+                                  '-- possibly corrupt configuration?'
+                                  % dstgroup)
+            dstgroup = dstgroup_test
         dstiter = yield_object_subnets(dstgroup)
         logging.debug('destination address is object %r', dstgroup)
     else:
