@@ -59,6 +59,8 @@ it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will 
 | ``` -o``` *OBJECT*, ```--show-object``` *OBJECT* |                        show the IP addresses for the object |
 | ```-O```, ```--show-objects``` |    show the IP addresses for all objects |
 |  ```-l```, ```--resolve```     |    process ```fqdn``` statements by resolving DNS |
+|  ```-n```, ```--line-number``` |    prefix each line of output with the 1-based line number within its input file |
+|  ```-a```, ```--acl-lines```   |    prefix ACLs with the 1-based line number |
 
 A prefix range consists of an IP address (with an optional prefix
 length indicating a subnet), and two optional keywords that specify
