@@ -1135,7 +1135,8 @@ def main() -> None:
                     print('', x, sep='\t')
         elif args.object:
             if args.object not in OBJECT_DICT:
-                raise SyntaxError('No such object found')
+                print('No such object found')
+                continue
             print(args.object)
             for x in sorted(OBJECT_DICT[args.object]):
                 print('', x, sep='\t')
