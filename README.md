@@ -58,6 +58,7 @@ it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will 
 |  ```-t``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN*, ```--test``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN* | test the arguments from the command line |
 | ``` -o``` *OBJECT*, ```--show-object``` *OBJECT* |                        show the IP addresses for the object |
 | ```-O```, ```--show-objects``` |    show the IP addresses for all objects |
+|  ```-l```, ```--resolve```     |    process ```fqdn``` statements by resolving DNS |
 
 A prefix range consists of an IP address (with an optional prefix
 length indicating a subnet), and two optional keywords that specify
