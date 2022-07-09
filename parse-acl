@@ -36,7 +36,7 @@ import argparse
 import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
-                    Iterable, Tuple, Dict, Set, Pattern, Literal, List,
+                    Iterable, Tuple, Dict, Set, Pattern, Literal, Collection,
                     TextIO)
 
 # Set some types used for holding data
@@ -948,8 +948,8 @@ def printline(linenum: int, acl_linenum: Optional[int],
         aclline = '%6d' % (linenum - acl_linenum + 1)
     print("%s\t%s" % (aclline, line))
 
-def getfiledescs(filenames: List[str]) -> Iterable[Tuple[Optional[str],
-                                                         TextIO]]:
+def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
+                                                               TextIO]]:
     """Given a list of file names, return each one as an open file descriptor.
     If the list is empty, return stdin."""
     if len(filenames) == 0:
