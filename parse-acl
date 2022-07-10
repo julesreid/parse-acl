@@ -30,7 +30,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
 import re
-from ipaddress import IPv4Network, NetmaskValueError
+from ipaddress import IPv4Network, IPv4Address, NetmaskValueError
 from socket import gethostbyname_ex, gaierror
 import argparse
 import logging
@@ -51,10 +51,19 @@ class PrefixRange(NamedTuple):
     ge: PrefixLength
     le: PrefixLength
 
+class Range(NamedTuple):
+    """Represent a range of IP addresses"""
+    start: IPv4Address
+    end: IPv4Address
+    def __str__(self) -> str:
+        return str(self.start) + ' - ' + str(self.end)
+
+AddrBlock = Union[IPv4Network, Range]
+
 class SrcDst(NamedTuple):
     """A match object with source and destination networks"""
-    src: IPv4Network
-    dst: IPv4Network
+    src: AddrBlock
+    dst: AddrBlock
 
 # Return type for routines that match subnets.  It is a two-element
 # tuple, where the first element is a string identifier that specifies
@@ -82,7 +91,7 @@ class MatchObj(NamedTuple):
 # Each entry contains a list of subnets (or IP addresses) for that
 # object, even if some of the entries were derived recursively from
 # other objects.
-OBJECT_DICT: Dict[str, Set[IPv4Network]] = {}
+OBJECT_DICT: Dict[str, Set[AddrBlock]] = {}
 
 ### IP address, subnet and prefix list matching
 
@@ -368,6 +377,12 @@ FQDN_RE = r'''
     fqdn[ ](?:v4[ ])?(''' + HOSTNAME + r''')
 '''
 
+RANGE_RE = r'''
+    ^
+    [ ]+
+    range[ ](''' + IP_ADDR + r''')[ ](''' + IP_ADDR + r''')
+'''
+
 ### IP address utility functions
 
 ANY = IPv4Network("0.0.0.0/0")
@@ -398,9 +413,38 @@ def matches_exact(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     and prefix length"""
     return match_subnet(subnet1, subnet2, subnet2.prefixlen, subnet2.prefixlen)
 
-def match_subnet_prefixrange(subnet: IPv4Network, prefix: PrefixRange) -> bool:
+def match_range(candidate_range: Range, prefix: PrefixRange) -> bool:
+    """Match a range of addresses against the search prefix.  This is
+    equivalent to searching a bunch of host addresses individually.
+    Therefore, the match is only considered if the prefix allows
+    host addresses.  If so, look for any overlap of the prefix with
+    the range."""
+
+    # Only match if the match includes host addresses
+    if prefix.le != 32:
+        return False
+    candidate_start, candidate_end = candidate_range
+    logging.debug("candidate start = %r, end = %r",
+                  candidate_start, candidate_end)
+    logging.debug("prefix = %r", prefix)
+    prefix_subnet = prefix.subnet
+    match_start = IPv4Address(prefix_subnet.network_address)
+    match_end = IPv4Address(prefix_subnet.broadcast_address)
+    logging.debug("match_start = %r, match_end = %r", match_start, match_end)
+    assert candidate_start <= candidate_end
+    # Rule out non-overlaps with the range
+    if candidate_start < match_start and candidate_end < match_start:
+        return False
+    if candidate_start > match_end:
+        return False
+    # What is left is an overlap
+    return True
+
+def match_subnet_prefixrange(subnet: AddrBlock, prefix: PrefixRange) -> bool:
     """Test if subnet falls within the subset or superset given
     by the prefix range prefix"""
+    if isinstance(subnet, Range):
+        return match_range(subnet, prefix)
     return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
 ### Parsing
@@ -652,7 +696,7 @@ def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[M
     remark = re_match.group(lastidx)
     yield MatchObj('remark', remark)
 
-def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
+def yield_object_subnets(obj_key: str) -> Iterable[AddrBlock]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
     if obj_key not in OBJECT_DICT:
@@ -663,7 +707,7 @@ def yield_object_subnets(obj_key: str) -> Iterable[IPv4Network]:
         logging.debug('obj_key value = %r', value)
         yield value
 
-def yield_single_subnet(subnet: IPv4Network) -> Iterable[IPv4Network]:
+def yield_single_subnet(subnet: IPv4Network) -> Iterable[AddrBlock]:
     """Accept a single argument subnet that will be yielded as needed"""
     yield subnet
 
@@ -712,8 +756,8 @@ def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[MatchObj
 
     logging.debug('srciter = %r', srciter)
     logging.debug('dstiter = %r', dstiter)
-    for src, dst in product(srciter, dstiter):
-        yield MatchObj('srcdst', SrcDst(src, dst))
+    for srcnet, dstnet in product(srciter, dstiter):
+        yield MatchObj('srcdst', SrcDst(srcnet, dstnet))
 
 def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the EXTENDED_ACL_RE regex"""
@@ -770,7 +814,7 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
 def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the TWICE_NAT_RE regex"""
 
-    def groupiter(idx: int) -> Iterable[IPv4Network]:
+    def groupiter(idx: int) -> Iterable[AddrBlock]:
         group = re_match.group(lastidx + idx)
         logging.debug("group = %r", group)
         if group is not None and group in OBJECT_DICT:
@@ -809,6 +853,19 @@ def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     for ipaddrstr in result[2]:
         logging.debug("ipaddrstr = %r", ipaddrstr)
         yield MatchObj('srcdst', SrcDst(IPv4Network(ipaddrstr), ANY))
+
+def range_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+    """Match the RANGE_RE regex"""
+    logging.debug("got RANGE_RE = %r", re_match.group(lastidx))
+    range_start = re_match.group(lastidx + 1)
+    range_end = re_match.group(lastidx + 2)
+    ip_range_start = IPv4Address(range_start)
+    ip_range_end = IPv4Address(range_end)
+    logging.debug("ip_range_start = %r", ip_range_start)
+    logging.debug("ip_range_end = %r", ip_range_end)
+    if ip_range_start > ip_range_end:
+        raise SyntaxError('invalid range')
+    yield MatchObj('srcdst', SrcDst(Range(ip_range_start, ip_range_end), ANY))
 
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the IP_NAT_POOL_RE regex"""
@@ -864,6 +921,7 @@ MATCH_RE_TABLE_RAW = {
     "STANDARD_ACL_RE": standard_acl_re,
     "TWICE_NAT_RE": twice_nat_re,
     "FQDN_RE": fqdn_re,
+    "RANGE_RE": range_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
@@ -1082,6 +1140,12 @@ def parse_config(filedesc: TextIO,
             # Remarks are only relevant for one line only
             current_remark = None
 
+def blockkey(block: AddrBlock) -> IPv4Network:
+    """Provide key for sorting objects of type IPv4Network or Range"""
+    if isinstance(block, Range):
+        return IPv4Network(block.start)
+    return block
+
 ### Main program
 
 def main() -> None:
@@ -1134,14 +1198,14 @@ def main() -> None:
         if args.objects:
             for k, v in sorted(OBJECT_DICT.items()):
                 print(k)
-                for x in sorted(v):
+                for x in sorted(v, key=blockkey):
                     print('', x, sep='\t')
         elif args.object:
             if args.object not in OBJECT_DICT:
                 print('No such object found')
                 continue
             print(args.object)
-            for x in sorted(OBJECT_DICT[args.object]):
+            for x in sorted(OBJECT_DICT[args.object], key=blockkey):
                 print('', x, sep='\t')
 
 if __name__ == '__main__':
