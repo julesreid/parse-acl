@@ -687,7 +687,8 @@ def header_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     yield MatchObj('header', (re_match.group(lastidx + 0),
                               re_match.group(lastidx + 1)))
 
-def extended_asa_acl_remark_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+def extended_asa_acl_remark_re(re_match: Match[str],
+                               lastidx: int) -> Iterable[MatchObj]:
     """Match the remark statement of a standard or extended ACL"""
     logging.debug("got EXTENDED_ASA_ACL_REMARK_RE = %r",
                   re_match.group(lastidx))
@@ -711,7 +712,8 @@ def yield_single_subnet(subnet: IPv4Network) -> Iterable[AddrBlock]:
     """Accept a single argument subnet that will be yielded as needed"""
     yield subnet
 
-def handle_extended_acl(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+def handle_extended_acl(re_match: Match[str],
+                        lastidx: int) -> Iterable[MatchObj]:
     """Extract values from the various formats for an extended ACL."""
 
     aclname = re_match.group(lastidx + 1)
@@ -768,7 +770,8 @@ def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     # as IPv4Network('0.0.0.0/0') instead of IPv4Network('0.0.0.0/32').
     yield from handle_extended_acl(re_match, lastidx)
 
-def extended_asa_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+def extended_asa_acl_re(re_match: Match[str],
+                        lastidx: int) -> Iterable[MatchObj]:
     """Match the EXTENDED_ASA_ACL_RE regex"""
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
     yield from handle_extended_acl(re_match, lastidx)
@@ -883,7 +886,8 @@ def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
         raise SyntaxError('invalid mask for address')
     yield MatchObj('srcdst', SrcDst(src, dst))
 
-def subnet_with_mask_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+def subnet_with_mask_re(re_match: Match[str],
+                        lastidx: int) -> Iterable[MatchObj]:
     """Match the SUBNET_WITH_MASK_RE regex"""
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
@@ -963,7 +967,7 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
     a subnet.  The patterns are dispatched based on the named group
     to helper functions which extract more information.
 
-    If a match type 'srcdst', return the source and destination
+    If a match type is 'srcdst', return the source and destination
     subnets found.  If the match type is 'position', it indicates that
     the regex matched too far and the value is an integer indicating
     the position to start the search for the next iteration."""
@@ -986,6 +990,7 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
 def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
     If the resolve flag is set, allow matching fqdn statements."""
+    assert isinstance(args.resolver, bool)
     match_re_str = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
                             for re_str in MATCH_RE_TABLE_RAW
                             if re_str != "FQDN_RE" or args.resolver)
@@ -1098,7 +1103,7 @@ def parse_config(filedesc: TextIO,
             logging.debug('header_line = %r', header_line)
             if header_line is not None:
                 logging.debug('header_obj = %r', header_obj)
-                # Save the src (address of object) using the current object name
+                # Save the src (address of object) using the object name
                 OBJECT_DICT[header_obj].add(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
