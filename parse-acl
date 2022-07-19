@@ -329,8 +329,8 @@ EXTENDED_ASA_ACL_RE = r'''
         |[ ]object(?:-group)?[ ](\S+)
     )?
     (?:[ ]log
-       [ ](?:debugging|informational|notifications|warnings|errors|critical
-                 |alerts|emergencies|[0-7])
+       (?:[ ](?:debugging|informational|notifications|warnings|errors|critical
+                |alerts|emergencies|[0-7]))?
     )?
     (?:[ ]interval[ ]\d+)?
     (?:[ ]time-range[ ]\S+)?
