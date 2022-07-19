@@ -37,7 +37,7 @@ import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
                     Iterable, Tuple, Dict, Set, Pattern, Literal, Collection,
-                    TextIO)
+                    TextIO, Generator)
 
 # Set some types used for holding data
 #
@@ -1032,6 +1032,153 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
             continue
         yield filename, filedesc
 
+def header_coroutine() -> \
+        Generator[Optional[Tuple[int, str]],
+                  Tuple[MatchObj, bool, int, str],
+                  None]:
+    """Receive match objects and other data from parse_config(),
+    keep state, and return data about the headers to print."""
+    header_line = None
+    header_last = None
+    yieldval = None
+    while True:
+        logging.debug("yielding %r", yieldval)
+        # Yields either None or a tuple with the line number and line
+        matchtype_obj, matched, linenum, line = (yield yieldval)
+        logging.debug("matchtype_obj = %r", matchtype_obj)
+        logging.debug("matched = %r", matched)
+        logging.debug("linenum = %r", linenum)
+        logging.debug("line = %r", line)
+        matchtype, obj = matchtype_obj
+        if matchtype == 'header':
+            assert isinstance(obj, tuple)
+            # line_val is entire line, obj_val is object name
+            line_val, obj_val = obj
+            assert isinstance(line_val, str)
+            assert isinstance(obj_val, str)
+            logging.debug("found new header for network object")
+            header_line = line_val
+            header_obj = obj_val
+            header_linenum = linenum
+            logging.debug("header_line = %r", header_line)
+            logging.debug("header_obj = %r", header_obj)
+            # Create the object in the dict
+            OBJECT_DICT.setdefault(header_obj, set())
+            yieldval = None
+            continue
+
+        if matchtype != 'srcdst':
+            yieldval = None
+            continue
+
+        assert isinstance(obj, SrcDst)
+
+        # If the current line is no longer part of an ACL header
+        # or object (or any other line that HEADER_RE may match),
+        # set the state variable to None.
+        logging.debug("line starts with space = %r", line.startswith(' '))
+        if not line.startswith(' '):
+            header_line = None
+            yieldval = None
+            continue
+
+        logging.debug('header_line = %r', header_line)
+        if header_line is not None:
+            logging.debug('saving header_obj %r with %r', header_obj, obj.src)
+            # Save the src (address of object) using the object name
+            OBJECT_DICT[header_obj].add(obj.src)
+
+        if matched:
+            if header_line != header_last:
+                # Header for the ACL changed, so print it now
+                assert header_linenum is not None
+                yieldval = header_linenum, header_line
+                header_last = header_line
+            else:
+                yieldval = None
+
+def remark_coroutine() -> \
+        Generator[Optional[Tuple[int, str]],
+                  Tuple[MatchObj, bool, int, str],
+                  None]:
+    """Receive match objects and other data from parse_config(),
+    keep state, and return data about remarks to print."""
+    current_remark = None
+    current_remark_line = None
+    yieldval = None
+    while True:
+        logging.debug("yielding %r", yieldval)
+        # Yields either None or a tuple with the line number and line
+        matchtype_obj, matched, linenum, line = (yield yieldval)
+        logging.debug("matchtype_obj = %r", matchtype_obj)
+        logging.debug("matched = %r", matched)
+        logging.debug("linenum = %r", linenum)
+        logging.debug("line = %r", line)
+        matchtype, obj = matchtype_obj
+
+        if matchtype == 'aclname':
+            if current_remark:
+                # Set the yield value for upcoming 'srcdst'
+                assert linenum == current_remark_line + 1
+                yieldval = current_remark_line, current_remark
+            else:
+                # No remark, so upcoming 'srcdst' will get None
+                yieldval = None
+            current_remark = None
+            continue
+
+        if matchtype != 'remark':
+            assert current_remark is None
+            continue
+
+        assert isinstance(obj, str)
+        current_remark = obj
+        current_remark_line = linenum
+        logging.debug("current_remark is %r", current_remark)
+        logging.debug("current_remark_line is %r", current_remark_line)
+        # Only set the yield value when match type is 'srcdst'
+        yieldval = None
+
+def aclname_coroutine() -> \
+        Generator[Optional[int],
+                  Tuple[MatchObj, bool, int, str],
+                  None]:
+    """Receive match objects and other data from parse_config(),
+    keep state, and return data about the line where an ACL starts"""
+    aclname = None
+    aclname_last = None
+    yieldval = None
+    last_linenum = None
+    while True:
+        logging.debug("yielding %r", yieldval)
+        # Yields either None or a line number
+        matchtype_obj, matched, linenum, line = (yield yieldval)
+        logging.debug("matchtype_obj = %r", matchtype_obj)
+        logging.debug("matched = %r", matched)
+        logging.debug("linenum = %r", linenum)
+        logging.debug("line = %r", line)
+        matchtype, obj = matchtype_obj
+
+        if linenum != last_linenum:
+            aclname = None
+            last_linenum = linenum
+
+        if matchtype == 'aclname':
+            assert isinstance(obj, str)
+            aclname = obj
+            logging.debug("aclname is %r", aclname)
+            yieldval = None
+            continue
+
+        if aclname:
+            if aclname != aclname_last:
+                # Record the linenum where an ACL starts for the first time
+                aclname_linenum: Optional[int] = linenum
+                aclname_last = aclname
+        else:
+            aclname_linenum = None
+        yieldval = aclname_linenum
+
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
@@ -1045,105 +1192,60 @@ def parse_config(filedesc: TextIO,
 
     match_re = compile_match_re(args=args)
 
-    header_last = None
-    header_line = None
-    current_remark = None
-    aclname_last = None
+    header_gen = header_coroutine()
+    remark_gen = remark_coroutine()
+    aclname_gen = aclname_coroutine()
+    assert next(header_gen) is None
+    assert next(remark_gen) is None
+    assert next(aclname_gen) is None
     for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
-        aclname = None
-        for matchtype, retval in find_regex(match_re, line):
+        for matchobj in find_regex(match_re, line):
+            matchtype, retval = matchobj
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
-            if matchtype == 'header':
-                assert isinstance(retval, tuple)
-                # line_val is entire line, obj_val is object name
-                line_val, obj_val = retval
-                assert isinstance(line_val, str)
-                assert isinstance(obj_val, str)
-                logging.debug("find_regex() found new header")
-                # New header for network object
-                header_line = line_val
-                header_obj = obj_val
-                header_linenum = linenum
-                logging.debug("header_line = %r", header_line)
-                logging.debug("header_obj = %r", header_obj)
-                # Create the object in the dict
-                OBJECT_DICT.setdefault(header_obj, set())
-                break
-            if matchtype == 'aclname':
-                assert isinstance(retval, str)
-                aclname = retval
-                logging.debug("aclname is %r", aclname)
-                header_line = None
-                continue
-
-            aclname_linenum: Optional[int]
-            if aclname:
-                if aclname != aclname_last:
-                    # Record the linenum where an ACL starts for the first time
-                    aclname_linenum = linenum
-            else:
-                aclname_linenum = None
-            aclname_last = aclname
-
-            if matchtype == 'remark':
-                assert isinstance(retval, str)
-                current_remark = retval
-                current_remark_line = linenum
-                logging.debug("current_remark is %r", current_remark)
-                logging.debug("current_remark_line is %r", current_remark_line)
-                header_line = None
-                break
             if matchtype != 'srcdst':
-                assert False
+                header_gen.send((matchobj, False, linenum, line))
+                remark_gen.send((matchobj, False, linenum, line))
+                aclname_gen.send((matchobj, False, linenum, line))
+                continue
             assert isinstance(retval, SrcDst)
             src, dst = retval
-
-            logging.debug('header_line = %r', header_line)
-            if header_line is not None:
-                logging.debug('header_obj = %r', header_obj)
-                # Save the src (address of object) using the object name
-                OBJECT_DICT[header_obj].add(src)
             logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
                           src, srcmatch, dst, dstmatch)
+
             if not printit:
                 logging.debug('continue through loop for more networks')
+                header_gen.send((matchobj, False, linenum, line))
+                remark_gen.send((matchobj, False, linenum, line))
+                aclname_gen.send((matchobj, False, linenum, line))
                 continue
+
             # See if the src/dst from the config matches srcmatch/dstmatch
             match_src = match_subnet_prefixrange(src, srcmatch)
             match_dst = match_subnet_prefixrange(dst, dstmatch)
-            if match_src or match_dst if logicalor else match_src and match_dst:
-                logging.debug('got match')
-                if header_line is not None and header_line != header_last:
-                    # Header for the ACL changed, so print it now
-                    assert header_linenum is not None
-                    assert aclname_linenum is None
-                    printline(header_linenum, None, header_line, args)
-                    header_last = header_line
-                # Print remark if one
-                if current_remark:
-                    # Only print immediately preceding remark
-                    assert current_remark_line is not None
-                    assert linenum == current_remark_line + 1
-                    printline(current_remark_line, aclname_linenum,
-                              current_remark, args)
-                printline(linenum, aclname_linenum, line, args)
-                # Remarks are only relevant for one line only
-                current_remark = None
-                # Break now, otherwise the same line can be printed more
-                # than once
-                break
-            # No match this time, but iterate for more
-            logging.debug('no match')
-        else:
-            # If the current line is no longer part of an ACL header
-            # or object (or any other line that HEADER_RE may match),
-            # set the state variable to None.
-            if not line.startswith(' '):
-                header_line = None
-            # Remarks are only relevant for one line only
-            current_remark = None
+            matched = (match_src or match_dst if logicalor
+                       else match_src and match_dst)
+            header_result = header_gen.send((matchobj, matched, linenum, line))
+            remark_result = remark_gen.send((matchobj, matched, linenum, line))
+            acl_linenum = aclname_gen.send((matchobj, matched, linenum, line))
+            logging.debug('remark_result = %r', remark_result)
+            logging.debug('acl_linenum = %r', acl_linenum)
+
+            if not matched:
+                # No match this time, but iterate for more
+                logging.debug('no match')
+                continue
+
+            logging.debug('got match')
+            if remark_result:
+                printline(remark_result[0], acl_linenum, remark_result[1], args)
+            if header_result:
+                printline(header_result[0], acl_linenum, header_result[1], args)
+            printline(linenum, acl_linenum, line, args)
+            # Break now, otherwise the same line can be printed more
+            # than once
+            break
 
 def blockkey(block: AddrBlock) -> IPv4Network:
     """Provide key for sorting objects of type IPv4Network or Range"""
