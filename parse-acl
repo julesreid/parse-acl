@@ -1001,6 +1001,8 @@ def printline(linenum: int, acl_linenum: Optional[int],
               line: str, args: argparse.Namespace) -> None:
     """Print a line from the configuration"""
 
+    logging.debug("linenum = %r, acl_linenum = %r, line = %r",
+                  linenum, acl_linenum, line)
     assert isinstance(args.linenumber, bool)
     if not args.linenumber:
         print(line)
@@ -1032,10 +1034,10 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
             continue
         yield filename, filedesc
 
-def header_coroutine() -> \
-        Generator[Optional[Tuple[int, str]],
-                  Tuple[MatchObj, bool, int, str],
-                  None]:
+CoroutineSend = Tuple[MatchObj, bool, int, str]
+HeaderYield = Optional[Tuple[int, str]]
+HeaderType = Generator[HeaderYield, CoroutineSend, None]
+def header_coroutine() -> HeaderType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about the headers to print."""
     header_line = None
@@ -1044,12 +1046,7 @@ def header_coroutine() -> \
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype_obj, matched, linenum, line = (yield yieldval)
-        logging.debug("matchtype_obj = %r", matchtype_obj)
-        logging.debug("matched = %r", matched)
-        logging.debug("linenum = %r", linenum)
-        logging.debug("line = %r", line)
-        matchtype, obj = matchtype_obj
+        matchtype, obj, matched, linenum, line = (yield yieldval)
         if matchtype == 'header':
             assert isinstance(obj, tuple)
             # line_val is entire line, obj_val is object name
@@ -1089,7 +1086,7 @@ def header_coroutine() -> \
             OBJECT_DICT[header_obj].add(obj.src)
 
         if matched:
-            if header_line != header_last:
+            if header_line is not None and header_line != header_last:
                 # Header for the ACL changed, so print it now
                 assert header_linenum is not None
                 yieldval = header_linenum, header_line
@@ -1097,10 +1094,9 @@ def header_coroutine() -> \
             else:
                 yieldval = None
 
-def remark_coroutine() -> \
-        Generator[Optional[Tuple[int, str]],
-                  Tuple[MatchObj, bool, int, str],
-                  None]:
+RemarkYield = Optional[Tuple[int, str]]
+RemarkType = Generator[RemarkYield, CoroutineSend, None]
+def remark_coroutine() -> RemarkType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about remarks to print."""
     current_remark = None
@@ -1109,12 +1105,7 @@ def remark_coroutine() -> \
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype_obj, matched, linenum, line = (yield yieldval)
-        logging.debug("matchtype_obj = %r", matchtype_obj)
-        logging.debug("matched = %r", matched)
-        logging.debug("linenum = %r", linenum)
-        logging.debug("line = %r", line)
-        matchtype, obj = matchtype_obj
+        matchtype, obj, matched, linenum, line = (yield yieldval)
 
         if matchtype == 'aclname':
             if current_remark:
@@ -1139,10 +1130,9 @@ def remark_coroutine() -> \
         # Only set the yield value when match type is 'srcdst'
         yieldval = None
 
-def aclname_coroutine() -> \
-        Generator[Optional[int],
-                  Tuple[MatchObj, bool, int, str],
-                  None]:
+ACLNameYield = Optional[int]
+ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
+def aclname_coroutine() -> ACLNameType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about the line where an ACL starts"""
     aclname = None
@@ -1152,12 +1142,7 @@ def aclname_coroutine() -> \
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a line number
-        matchtype_obj, matched, linenum, line = (yield yieldval)
-        logging.debug("matchtype_obj = %r", matchtype_obj)
-        logging.debug("matched = %r", matched)
-        logging.debug("linenum = %r", linenum)
-        logging.debug("line = %r", line)
-        matchtype, obj = matchtype_obj
+        matchtype, obj, matched, linenum, line = (yield yieldval)
 
         if linenum != last_linenum:
             aclname = None
@@ -1179,6 +1164,39 @@ def aclname_coroutine() -> \
             aclname_linenum = None
         yieldval = aclname_linenum
 
+def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType]:
+    """Create a sequence of generator objects that will be used
+    as state machiens to parse the header lines, remarks, and ACL
+    start lines."""
+    header_gen = header_coroutine()
+    remark_gen = remark_coroutine()
+    aclname_gen = aclname_coroutine()
+    assert next(header_gen) is None
+    assert next(remark_gen) is None
+    assert next(aclname_gen) is None
+    return header_gen, remark_gen, aclname_gen
+
+# mypy's handling for the Generator type is lacking.  The real prototype
+# for this function should be this, but mypy cannot do it without producing
+# errors:
+#
+# def gen_send(gen_seq: Tuple[HeaderType, RemarkType, ACLNameType],
+#              matchobj: MatchObj, matched: bool, linenum: int,
+#              line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield]:
+#
+def gen_send(gen_seq: Tuple[Any, Any, Any], matchobj: MatchObj,
+             matched: bool, linenum: int, line: str) -> Tuple[Any, ...]:
+    """Given a sequence of generator objects, send the same match
+    object and other data to each one."""
+    logging.debug("matchobj, matched, linenum, line = %r",
+                  (matchobj, matched, linenum, line))
+    ret_seq: Tuple[Any, ...] = ()
+    for gen in gen_seq:
+        retval = gen.send((matchobj.matchtype, matchobj.obj, matched,
+                           linenum, line))
+        ret_seq += (retval,)
+    return ret_seq
+
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
@@ -1192,12 +1210,7 @@ def parse_config(filedesc: TextIO,
 
     match_re = compile_match_re(args=args)
 
-    header_gen = header_coroutine()
-    remark_gen = remark_coroutine()
-    aclname_gen = aclname_coroutine()
-    assert next(header_gen) is None
-    assert next(remark_gen) is None
-    assert next(aclname_gen) is None
+    gen_seq = gen_init()
     for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
@@ -1205,9 +1218,7 @@ def parse_config(filedesc: TextIO,
             matchtype, retval = matchobj
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
             if matchtype != 'srcdst':
-                header_gen.send((matchobj, False, linenum, line))
-                remark_gen.send((matchobj, False, linenum, line))
-                aclname_gen.send((matchobj, False, linenum, line))
+                gen_send(gen_seq, matchobj, False, linenum, line)
                 continue
             assert isinstance(retval, SrcDst)
             src, dst = retval
@@ -1216,9 +1227,7 @@ def parse_config(filedesc: TextIO,
 
             if not printit:
                 logging.debug('continue through loop for more networks')
-                header_gen.send((matchobj, False, linenum, line))
-                remark_gen.send((matchobj, False, linenum, line))
-                aclname_gen.send((matchobj, False, linenum, line))
+                gen_send(gen_seq, matchobj, False, linenum, line)
                 continue
 
             # See if the src/dst from the config matches srcmatch/dstmatch
@@ -1226,9 +1235,9 @@ def parse_config(filedesc: TextIO,
             match_dst = match_subnet_prefixrange(dst, dstmatch)
             matched = (match_src or match_dst if logicalor
                        else match_src and match_dst)
-            header_result = header_gen.send((matchobj, matched, linenum, line))
-            remark_result = remark_gen.send((matchobj, matched, linenum, line))
-            acl_linenum = aclname_gen.send((matchobj, matched, linenum, line))
+            (header_result, remark_result,
+             acl_linenum) = gen_send(gen_seq, matchobj, matched, linenum, line)
+            logging.debug('header_result = %r', header_result)
             logging.debug('remark_result = %r', remark_result)
             logging.debug('acl_linenum = %r', acl_linenum)
 
