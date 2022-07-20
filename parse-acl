@@ -303,6 +303,7 @@ EXTENDED_ASA_ACL_RE = r'''
         |host[ ](''' + IP_ADDR + r''')
         |(''' + IP_ADDR + r')[ ](' + IP_ADDR + r''')
         |object(?:-group)?[ ](\S+)
+        |interface[ ]\S+
     )
     (?:
         [ ](?:eq|gt)[ ]\S+
@@ -315,6 +316,7 @@ EXTENDED_ASA_ACL_RE = r'''
         |host[ ](''' + IP_ADDR + r''')
         |(''' + IP_ADDR + r')[ ](' + IP_ADDR + r''')
         |object(?:-group)?[ ](\S+)
+        |interface[ ]\S+
     )
     (?:
         [ ](?:alternate-address|conversion-error|echo(?:-reply)?
@@ -334,6 +336,7 @@ EXTENDED_ASA_ACL_RE = r'''
     )?
     (?:[ ]interval[ ]\d+)?
     (?:[ ]time-range[ ]\S+)?
+    (?:[ ]inactive)?
     [ ]*
     $
 '''
@@ -468,7 +471,7 @@ def range_to_net(re_range: str, re_host: Optional[str],
     if re_range.startswith('host '):
         assert re_host is not None
         net = re_host
-    elif re_range in ("any", "any4"):
+    elif re_range in ("any", "any4") or re_range.startswith('interface '):
         net = '0.0.0.0/0'
     elif re_mask is None:
         net = re_net
