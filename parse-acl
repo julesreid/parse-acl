@@ -140,6 +140,22 @@ NET_OR_GRP_OBJECT_RE = r'''
     (\S+)
 '''
 
+# $1 = IP address
+# $2 = network mask
+# $3 = standby IP address or None
+' ip address 172.16.11.35 255.255.255.0'
+IP_ADDRESS_STATEMENT_RE = r'''
+    ^
+    [ ]*
+    ip[ ]address
+    [ ](''' + IP_ADDR + ''')
+    [ ](''' + IP_ADDR + ''')
+    (?:
+        [ ]standby
+        [ ](''' + IP_ADDR + r''')
+    )?
+'''
+
 # $1 = starting IP address
 # $2 = ending IP address
 # $3 = net mask
@@ -873,6 +889,23 @@ def range_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
         raise SyntaxError('invalid range')
     yield MatchObj('srcdst', SrcDst(Range(ip_range_start, ip_range_end), ANY))
 
+def ip_address_statement_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+    """Match the IP_ADDRESS_STATEMENT_RE regex"""
+    logging.debug("got IP_ADDRESS_STATEMENT_RE = %r", re_match.group(lastidx))
+    ipaddr = re_match.group(lastidx + 1)
+    netmask = re_match.group(lastidx + 2)
+    standby = re_match.group(lastidx + 3)
+    subnet = addrmasktosubnet(ipaddr, netmask)
+    if subnet is None:
+        raise SyntaxError('invalid mask for address')
+    # Yield the subnet
+    yield MatchObj('srcdst', SrcDst(subnet, ANY))
+    # Yield the IP address as a host network
+    yield MatchObj('srcdst', SrcDst(IPv4Network(ipaddr), ANY))
+    # Yield the standby IP address as a host network if it exists
+    if standby:
+        yield MatchObj('srcdst', SrcDst(IPv4Network(standby), ANY))
+
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
@@ -929,6 +962,7 @@ MATCH_RE_TABLE_RAW = {
     "TWICE_NAT_RE": twice_nat_re,
     "FQDN_RE": fqdn_re,
     "RANGE_RE": range_re,
+    "IP_ADDRESS_STATEMENT_RE": ip_address_statement_re,
     "IP_NAT_POOL_RE": ip_nat_pool_re,
     "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
     "SUBNET_RE": subnet_re,
