@@ -1037,7 +1037,7 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
             continue
         yield filename, filedesc
 
-CoroutineSend = Tuple[MatchObj, bool, int, str]
+CoroutineSend = Tuple[Matchtype, Object, bool, int, str]
 HeaderYield = Optional[Tuple[int, str]]
 HeaderType = Generator[HeaderYield, CoroutineSend, None]
 def header_coroutine() -> HeaderType:
@@ -1108,7 +1108,7 @@ def remark_coroutine() -> RemarkType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, matched, linenum, line = (yield yieldval)
+        matchtype, obj, _, linenum, _ = (yield yieldval)
 
         if matchtype == 'aclname':
             if current_remark:
@@ -1145,7 +1145,7 @@ def aclname_coroutine() -> ACLNameType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a line number
-        matchtype, obj, matched, linenum, line = (yield yieldval)
+        matchtype, obj, _, linenum, _ = (yield yieldval)
 
         if linenum != last_linenum:
             aclname = None
@@ -1200,7 +1200,6 @@ def gen_send(gen_seq: Tuple[Any, Any, Any], matchobj: MatchObj,
         ret_seq += (retval,)
     return ret_seq
 
-# XXX this routine is getting overloaded and needs to be broken out
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
                  logicalor: bool, printit: bool,
