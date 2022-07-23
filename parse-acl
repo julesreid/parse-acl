@@ -1072,6 +1072,7 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
 # XXX this routine is getting overloaded and needs to be broken out
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
+                 match_re: Pattern[str],
                  logicalor: bool, printit: bool,
                  args: argparse.Namespace) -> None:
     """Parse the configuration and search for lines which match ACLs,
@@ -1079,8 +1080,6 @@ def parse_config(filedesc: TextIO,
     is True, match the srcmatch and destmatch objects as the networks
     are parsed.  Otherwise, the arguments are ignored and this routine
     is used to capture the networks for all objects in OBJECT_DICT."""
-
-    match_re = compile_match_re(args=args)
 
     header_last = None
     header_line = None
@@ -1188,6 +1187,16 @@ def blockkey(block: AddrBlock) -> IPv4Network:
         return IPv4Network(block.start)
     return block
 
+def prepare_regexes(args: argparse.Namespace) -> Pattern[str]:
+    """Prepare the MATCH_FUNCS and match_re regular expressions which
+    are used by parse_args().  They only need to be compiled once."""
+
+    # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
+    for key in MATCH_RE_TABLE_RAW:
+        MATCH_FUNCS[key.__name__] = key
+
+    return compile_match_re(args=args)
+
 ### Main program
 
 MATCH_FUNCS: Dict[str, Callable[[Match[str], int], Iterable[MatchObj]]] = {}
@@ -1223,9 +1232,7 @@ def main() -> None:
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
 
-    # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
-    for key in MATCH_RE_TABLE_RAW:
-        MATCH_FUNCS[key.__name__] = key
+    match_re = prepare_regexes(args)
 
     assert isinstance(args.logicalor, bool)
     assert isinstance(args.objects, bool)
@@ -1239,7 +1246,8 @@ def main() -> None:
                 print()
             print(filename + ':')
 
-        parse_config(filedesc, srcmatch, dstmatch, logicalor=args.logicalor,
+        parse_config(filedesc, srcmatch, dstmatch, match_re,
+                     logicalor=args.logicalor,
                      printit=not (args.objects or args.object),
                      args=args)
 
