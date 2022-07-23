@@ -37,7 +37,7 @@ import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
                     Iterable, Tuple, Dict, Set, Pattern, Literal, Collection,
-                    TextIO)
+                    TextIO, Callable)
 
 # Set some types used for holding data
 #
@@ -953,19 +953,19 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     yield MatchObj('srcdst', SrcDst(src, dst))
 
 MATCH_RE_TABLE_RAW = {
-    "HEADER_RE": header_re,
-    "EXTENDED_ASA_ACL_REMARK_RE": extended_asa_acl_remark_re,
-    "EXTENDED_ACL_RE": extended_acl_re,
-    "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
-    "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
-    "STANDARD_ACL_RE": standard_acl_re,
-    "TWICE_NAT_RE": twice_nat_re,
-    "FQDN_RE": fqdn_re,
-    "RANGE_RE": range_re,
-    "IP_ADDRESS_STATEMENT_RE": ip_address_statement_re,
-    "IP_NAT_POOL_RE": ip_nat_pool_re,
-    "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
-    "SUBNET_RE": subnet_re,
+    header_re: HEADER_RE,
+    extended_asa_acl_remark_re: EXTENDED_ASA_ACL_REMARK_RE,
+    extended_acl_re: EXTENDED_ACL_RE,
+    extended_asa_acl_re: EXTENDED_ASA_ACL_RE,
+    net_or_grp_object_re: NET_OR_GRP_OBJECT_RE,
+    standard_acl_re: STANDARD_ACL_RE,
+    twice_nat_re: TWICE_NAT_RE,
+    fqdn_re: FQDN_RE,
+    range_re: RANGE_RE,
+    ip_address_statement_re: IP_ADDRESS_STATEMENT_RE,
+    ip_nat_pool_re: IP_NAT_POOL_RE,
+    subnet_with_mask_re: SUBNET_WITH_MASK_RE,
+    subnet_re: SUBNET_RE,
 }
 
 def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
@@ -982,12 +982,12 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
         logging.debug('i = %r, re_match = %r', i, re_match)
 
         assert bool(re_match)
-        assert re_match.lastgroup in MATCH_RE_TABLE_RAW
+        assert re_match.lastgroup in MATCH_FUNCS
         assert isinstance(re_match.lastindex, int)
         logging.debug('re_match.lastgroup = %r', re_match.lastgroup)
         logging.debug('re_match.lastindex = %r', re_match.lastindex)
-        logging.debug('MATCH_RE_TABLE_RAW[re_match.lastgroup] = %r',
-                      MATCH_RE_TABLE_RAW[re_match.lastgroup])
+        logging.debug('MATCH_FUNCS[re_match.lastgroup] = %r',
+                      MATCH_FUNCS[re_match.lastgroup])
         logging.debug('re_match.group(lastindex + 0) = %r',
                       re_match.group(re_match.lastindex + 0))
         logging.debug('re_match.group(lastindex + 1) = %r',
@@ -995,8 +995,8 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
         logging.debug('re_match.group(lastindex + 2) = %r',
                       re_match.group(re_match.lastindex + 2))
 
-        yield from MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
-                                                          re_match.lastindex)
+        yield from MATCH_FUNCS[re_match.lastgroup](re_match,
+                                                   re_match.lastindex)
 
 def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
     """Iterate through all of the different patterns that can be
@@ -1028,9 +1028,9 @@ def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
     If the resolve flag is set, allow matching fqdn statements."""
     assert isinstance(args.resolver, bool)
-    match_re_str = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
-                            for re_str in MATCH_RE_TABLE_RAW
-                            if re_str != "FQDN_RE" or args.resolver)
+    match_re_str = '|'.join('(?P<%s>%s)' % (re_func.__name__, re_value)
+                            for re_func, re_value in MATCH_RE_TABLE_RAW.items()
+                            if re_func.__name__ != "fqdn_re" or args.resolver)
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
@@ -1190,6 +1190,8 @@ def blockkey(block: AddrBlock) -> IPv4Network:
 
 ### Main program
 
+MATCH_FUNCS: Dict[str, Callable[[Match[str], int], Iterable[MatchObj]]] = {}
+
 def main() -> None:
     """Main routine"""
 
@@ -1220,6 +1222,10 @@ def main() -> None:
 
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
+
+    # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
+    for key in MATCH_RE_TABLE_RAW:
+        MATCH_FUNCS[key.__name__] = key
 
     assert isinstance(args.logicalor, bool)
     assert isinstance(args.objects, bool)
