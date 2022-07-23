@@ -37,7 +37,7 @@ import logging
 from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
                     Iterable, Tuple, Dict, Set, Pattern, Literal, Collection,
-                    TextIO, Generator)
+                    TextIO, Callable, Generator)
 
 # Set some types used for holding data
 #
@@ -138,6 +138,22 @@ NET_OR_GRP_OBJECT_RE = r'''
         |network-object[ ]object
     )[ ]
     (\S+)
+'''
+
+# $1 = IP address
+# $2 = network mask
+# $3 = standby IP address or None
+' ip address 172.16.11.35 255.255.255.0'
+IP_ADDRESS_STATEMENT_RE = r'''
+    ^
+    [ ]*
+    ip[ ]address
+    [ ](''' + IP_ADDR + ''')
+    [ ](''' + IP_ADDR + ''')
+    (?:
+        [ ]standby
+        [ ](''' + IP_ADDR + r''')
+    )?
 '''
 
 # $1 = starting IP address
@@ -873,6 +889,23 @@ def range_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
         raise SyntaxError('invalid range')
     yield MatchObj('srcdst', SrcDst(Range(ip_range_start, ip_range_end), ANY))
 
+def ip_address_statement_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+    """Match the IP_ADDRESS_STATEMENT_RE regex"""
+    logging.debug("got IP_ADDRESS_STATEMENT_RE = %r", re_match.group(lastidx))
+    ipaddr = re_match.group(lastidx + 1)
+    netmask = re_match.group(lastidx + 2)
+    standby = re_match.group(lastidx + 3)
+    subnet = addrmasktosubnet(ipaddr, netmask)
+    if subnet is None:
+        raise SyntaxError('invalid mask for address')
+    # Yield the subnet
+    yield MatchObj('srcdst', SrcDst(subnet, ANY))
+    # Yield the IP address as a host network
+    yield MatchObj('srcdst', SrcDst(IPv4Network(ipaddr), ANY))
+    # Yield the standby IP address as a host network if it exists
+    if standby:
+        yield MatchObj('srcdst', SrcDst(IPv4Network(standby), ANY))
+
 def ip_nat_pool_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the IP_NAT_POOL_RE regex"""
     logging.debug("got IP_NAT_POOL_RE = %r", re_match.group(lastidx))
@@ -920,18 +953,19 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     yield MatchObj('srcdst', SrcDst(src, dst))
 
 MATCH_RE_TABLE_RAW = {
-    "HEADER_RE": header_re,
-    "EXTENDED_ASA_ACL_REMARK_RE": extended_asa_acl_remark_re,
-    "EXTENDED_ACL_RE": extended_acl_re,
-    "EXTENDED_ASA_ACL_RE": extended_asa_acl_re,
-    "NET_OR_GRP_OBJECT_RE": net_or_grp_object_re,
-    "STANDARD_ACL_RE": standard_acl_re,
-    "TWICE_NAT_RE": twice_nat_re,
-    "FQDN_RE": fqdn_re,
-    "RANGE_RE": range_re,
-    "IP_NAT_POOL_RE": ip_nat_pool_re,
-    "SUBNET_WITH_MASK_RE": subnet_with_mask_re,
-    "SUBNET_RE": subnet_re,
+    header_re: HEADER_RE,
+    extended_asa_acl_remark_re: EXTENDED_ASA_ACL_REMARK_RE,
+    extended_acl_re: EXTENDED_ACL_RE,
+    extended_asa_acl_re: EXTENDED_ASA_ACL_RE,
+    net_or_grp_object_re: NET_OR_GRP_OBJECT_RE,
+    standard_acl_re: STANDARD_ACL_RE,
+    twice_nat_re: TWICE_NAT_RE,
+    fqdn_re: FQDN_RE,
+    range_re: RANGE_RE,
+    ip_address_statement_re: IP_ADDRESS_STATEMENT_RE,
+    ip_nat_pool_re: IP_NAT_POOL_RE,
+    subnet_with_mask_re: SUBNET_WITH_MASK_RE,
+    subnet_re: SUBNET_RE,
 }
 
 def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
@@ -948,12 +982,12 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
         logging.debug('i = %r, re_match = %r', i, re_match)
 
         assert bool(re_match)
-        assert re_match.lastgroup in MATCH_RE_TABLE_RAW
+        assert re_match.lastgroup in MATCH_FUNCS
         assert isinstance(re_match.lastindex, int)
         logging.debug('re_match.lastgroup = %r', re_match.lastgroup)
         logging.debug('re_match.lastindex = %r', re_match.lastindex)
-        logging.debug('MATCH_RE_TABLE_RAW[re_match.lastgroup] = %r',
-                      MATCH_RE_TABLE_RAW[re_match.lastgroup])
+        logging.debug('MATCH_FUNCS[re_match.lastgroup] = %r',
+                      MATCH_FUNCS[re_match.lastgroup])
         logging.debug('re_match.group(lastindex + 0) = %r',
                       re_match.group(re_match.lastindex + 0))
         logging.debug('re_match.group(lastindex + 1) = %r',
@@ -961,8 +995,8 @@ def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
         logging.debug('re_match.group(lastindex + 2) = %r',
                       re_match.group(re_match.lastindex + 2))
 
-        yield from MATCH_RE_TABLE_RAW[re_match.lastgroup](re_match,
-                                                          re_match.lastindex)
+        yield from MATCH_FUNCS[re_match.lastgroup](re_match,
+                                                   re_match.lastindex)
 
 def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
     """Iterate through all of the different patterns that can be
@@ -994,9 +1028,9 @@ def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
     If the resolve flag is set, allow matching fqdn statements."""
     assert isinstance(args.resolver, bool)
-    match_re_str = '|'.join('(?P<%s>%s)' % (re_str, eval(re_str))
-                            for re_str in MATCH_RE_TABLE_RAW
-                            if re_str != "FQDN_RE" or args.resolver)
+    match_re_str = '|'.join('(?P<%s>%s)' % (re_func.__name__, re_value)
+                            for re_func, re_value in MATCH_RE_TABLE_RAW.items()
+                            if re_func.__name__ != "fqdn_re" or args.resolver)
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
@@ -1202,6 +1236,7 @@ def gen_send(gen_seq: Tuple[Any, Any, Any], matchobj: MatchObj,
 
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
+                 match_re: Pattern[str],
                  logicalor: bool, printit: bool,
                  args: argparse.Namespace) -> None:
     """Parse the configuration and search for lines which match ACLs,
@@ -1209,8 +1244,6 @@ def parse_config(filedesc: TextIO,
     is True, match the srcmatch and destmatch objects as the networks
     are parsed.  Otherwise, the arguments are ignored and this routine
     is used to capture the networks for all objects in OBJECT_DICT."""
-
-    match_re = compile_match_re(args=args)
 
     gen_seq = gen_init()
     for linenum, line in enumerate(filedesc, start=1):
@@ -1264,7 +1297,19 @@ def blockkey(block: AddrBlock) -> IPv4Network:
         return IPv4Network(block.start)
     return block
 
+def prepare_regexes(args: argparse.Namespace) -> Pattern[str]:
+    """Prepare the MATCH_FUNCS and match_re regular expressions which
+    are used by parse_args().  They only need to be compiled once."""
+
+    # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
+    for key in MATCH_RE_TABLE_RAW:
+        MATCH_FUNCS[key.__name__] = key
+
+    return compile_match_re(args=args)
+
 ### Main program
+
+MATCH_FUNCS: Dict[str, Callable[[Match[str], int], Iterable[MatchObj]]] = {}
 
 def main() -> None:
     """Main routine"""
@@ -1297,6 +1342,8 @@ def main() -> None:
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)
 
+    match_re = prepare_regexes(args)
+
     assert isinstance(args.logicalor, bool)
     assert isinstance(args.objects, bool)
     assert isinstance(args.object, (str, type(None)))
@@ -1309,7 +1356,8 @@ def main() -> None:
                 print()
             print(filename + ':')
 
-        parse_config(filedesc, srcmatch, dstmatch, logicalor=args.logicalor,
+        parse_config(filedesc, srcmatch, dstmatch, match_re,
+                     logicalor=args.logicalor,
                      printit=not (args.objects or args.object),
                      args=args)
 
