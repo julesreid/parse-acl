@@ -143,7 +143,6 @@ NET_OR_GRP_OBJECT_RE = r'''
 # $1 = IP address
 # $2 = network mask
 # $3 = standby IP address or None
-' ip address 172.16.11.35 255.255.255.0'
 IP_ADDRESS_STATEMENT_RE = r'''
     ^
     [ ]*
@@ -357,10 +356,17 @@ EXTENDED_ASA_ACL_RE = r'''
     $
 '''
 
+# $1 = original source IP address
+# $2 = translated source IP address
+# $3 = original destination IP address
+# $4 = translated destination IP address
+# $5 = original service ports
+# $6 = translation service ports
 OBJECT = r'''(\S+)'''
 INTF = r'''[a-zA-Z0-9_-]+'''
 TWICE_NAT_RE = r'''
-    ^nat[ ]
+    ^
+    nat[ ]
     \(''' + INTF + r',' + INTF + r'''\)[ ]
     (?:after-auto[ ])?
     source[ ]
@@ -387,6 +393,7 @@ TWICE_NAT_RE = r'''
     (?:[ ]route-lookup)?
     (?:[ ]inactive)?
     (?:[ ]description[ ].*)?
+    [ ]*
     $
 '''
 
