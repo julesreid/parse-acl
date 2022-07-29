@@ -73,8 +73,8 @@ class SrcDst(NamedTuple):
 # where the first string is the entire line, and the second string
 # is the name of the object.
 #
-Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname']
-Object = Union[SrcDst,                             # srcdst
+Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname', 'nat']
+Object = Union[SrcDst,                             # srcdst, nat
                int,                                # position
                Tuple[str, str],                    # header
                str]                                # remark, aclname
@@ -896,7 +896,7 @@ def twice_nat_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     srciter = groupiter(2)
     dstiter = groupiter(4)
     for src, dst in product(srciter, dstiter):
-        yield MatchObj('srcdst', SrcDst(src, dst))
+        yield MatchObj('nat', SrcDst(src, dst))
 
 def object_nat_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the OBJECT_NAT_RE regex"""
@@ -906,21 +906,21 @@ def object_nat_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     network_object = re_match.group(lastidx + 2)
     if ipaddr is not None:
         assert network_object is None
-        yield MatchObj('srcdst', SrcDst(IPv4Network(ipaddr), ANY))
+        yield MatchObj('nat', SrcDst(IPv4Network(ipaddr), ANY))
         return
     if network_object is None:
         # pat-pool is being used
-        yield MatchObj('srcdst', SrcDst(ANY, ANY))
+        yield MatchObj('nat', SrcDst(ANY, ANY))
         return
     logging.debug("have object nat with network_object = %r", network_object)
     # If the nat statement matches "interface", use ANY instead (for now)
     if network_object == 'interface':
-        yield MatchObj('srcdst', SrcDst(ANY, ANY))
+        yield MatchObj('nat', SrcDst(ANY, ANY))
         return
     if network_object not in OBJECT_DICT:
         return
     for src in yield_object_subnets(network_object):
-        yield MatchObj('srcdst', SrcDst(src, ANY))
+        yield MatchObj('nat', SrcDst(src, ANY))
 
 def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the FQDN_RE regex"""
@@ -1163,7 +1163,7 @@ def header_coroutine() -> HeaderType:
             yieldval = None
             continue
 
-        if matchtype != 'srcdst':
+        if matchtype not in ('srcdst', 'nat'):
             yieldval = None
             continue
 
@@ -1179,7 +1179,7 @@ def header_coroutine() -> HeaderType:
             continue
 
         logging.debug('header_line = %r', header_line)
-        if header_line is not None:
+        if header_line is not None and matchtype == 'srcdst':
             logging.debug('saving header_obj %r with %r', header_obj, obj.src)
             # Save the src (address of object) using the object name
             OBJECT_DICT[header_obj].add(obj.src)
@@ -1263,17 +1263,48 @@ def aclname_coroutine() -> ACLNameType:
             aclname_linenum = None
         yieldval = aclname_linenum
 
-def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType]:
+ObjectNATYield = Optional[Tuple[int, str]]
+ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
+def objectnat_coroutine() -> ObjectNATType:
+    """Receive match objects and other data from parse_config(),
+    keep state, and return data about the headers to print for NAT
+    objects."""
+
+    header_line = None
+    yieldval = None
+    while True:
+        logging.debug("yielding %r", yieldval)
+        # Yields either None or a tuple with the line number and line
+        matchtype, obj, matched, linenum, line = (yield yieldval)
+        logging.debug("matchtype = %r, obj = %r, matched = %r, "
+                      "linenum = %r, line = %r",
+                      matchtype, obj, matched, linenum, line)
+        if matchtype == 'header':
+            if matched:
+                header_line = line
+                header_linenum = linenum
+            else:
+                header_line = None
+            yieldval = None
+            continue
+        if matchtype == 'nat' and header_line:
+            yieldval = header_linenum, header_line
+            continue
+        yieldval = None
+
+def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType, ObjectNATType]:
     """Create a sequence of generator objects that will be used
-    as state machiens to parse the header lines, remarks, and ACL
+    as state machines to parse the header lines, remarks, and ACL
     start lines."""
     header_gen = header_coroutine()
     remark_gen = remark_coroutine()
     aclname_gen = aclname_coroutine()
+    objectnat_gen = objectnat_coroutine()
     assert next(header_gen) is None
     assert next(remark_gen) is None
     assert next(aclname_gen) is None
-    return header_gen, remark_gen, aclname_gen
+    assert next(objectnat_gen) is None
+    return header_gen, remark_gen, aclname_gen, objectnat_gen
 
 # mypy's handling for the Generator type is lacking.  The real prototype
 # for this function should be this, but mypy cannot do it without producing
@@ -1283,18 +1314,30 @@ def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType]:
 #              matchobj: MatchObj, matched: bool, linenum: int,
 #              line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield]:
 #
-def gen_send(gen_seq: Tuple[Any, Any, Any], matchobj: MatchObj,
+def gen_send(gen_seq: Tuple[Any, Any, Any, Any], matchobj: MatchObj,
              matched: bool, linenum: int, line: str) -> Tuple[Any, ...]:
     """Given a sequence of generator objects, send the same match
     object and other data to each one."""
-    logging.debug("matchobj, matched, linenum, line = %r",
-                  (matchobj, matched, linenum, line))
+    logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
+                  matchobj, matched, linenum, line)
     ret_seq: Tuple[Any, ...] = ()
     for gen in gen_seq:
         retval = gen.send((matchobj.matchtype, matchobj.obj, matched,
                            linenum, line))
         ret_seq += (retval,)
     return ret_seq
+
+def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
+    """Determine if a prefix range 'prefix' matches any of the prefixes
+    in the object named by 'objname'."""
+    logging.debug("objname = %r, prefix = %r", objname, prefix)
+    if objname not in OBJECT_DICT:
+        return False
+    logging.debug("OBJECT_DICT[objname] = %r", OBJECT_DICT[objname])
+    for subnet in OBJECT_DICT[objname]:
+        if match_subnet_prefixrange(subnet, prefix):
+            return True
+    return False
 
 def parse_config(filedesc: TextIO,
                  srcmatch: PrefixRange, dstmatch: PrefixRange, /,
@@ -1314,8 +1357,16 @@ def parse_config(filedesc: TextIO,
         for matchobj in find_regex(match_re, line):
             matchtype, retval = matchobj
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
-            if matchtype != 'srcdst':
-                gen_send(gen_seq, matchobj, False, linenum, line)
+            if matchtype not in ('srcdst', 'nat'):
+                if matchtype == 'header':
+                    assert isinstance(retval, tuple)
+                    _, objname = retval
+                    assert isinstance(objname, str)
+                    matched = prefixinobject(objname, srcmatch)
+                else:
+                    matched = False
+                logging.debug("prefixinobject returned %r", matched)
+                gen_send(gen_seq, matchobj, matched, linenum, line)
                 continue
             assert isinstance(retval, SrcDst)
             src, dst = retval
@@ -1332,13 +1383,14 @@ def parse_config(filedesc: TextIO,
             match_dst = match_subnet_prefixrange(dst, dstmatch)
             matched = (match_src or match_dst if logicalor
                        else match_src and match_dst)
-            (header_result, remark_result,
-             acl_linenum) = gen_send(gen_seq, matchobj, matched, linenum, line)
+            (header_result, remark_result, acl_linenum,
+             objectnat) = gen_send(gen_seq, matchobj, matched, linenum, line)
             logging.debug('header_result = %r', header_result)
             logging.debug('remark_result = %r', remark_result)
             logging.debug('acl_linenum = %r', acl_linenum)
+            logging.debug('objectnat = %r', objectnat)
 
-            if not matched:
+            if not matched and not objectnat:
                 # No match this time, but iterate for more
                 logging.debug('no match')
                 continue
@@ -1346,8 +1398,10 @@ def parse_config(filedesc: TextIO,
             logging.debug('got match')
             if remark_result:
                 printline(remark_result[0], acl_linenum, remark_result[1], args)
-            if header_result:
+            elif header_result:
                 printline(header_result[0], acl_linenum, header_result[1], args)
+            elif objectnat:
+                printline(objectnat[0], acl_linenum, objectnat[1], args)
             printline(linenum, acl_linenum, line, args)
             # Break now, otherwise the same line can be printed more
             # than once
