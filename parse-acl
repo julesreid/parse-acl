@@ -8,8 +8,6 @@ network range.
 
 To do:
 
-* Match NAT statements
-* Match ranges (correctly accounting for overlaps, either in whole or part)
 * Test cases
 
 Copyright © 2022 J. Cowley
@@ -71,7 +69,7 @@ class SrcDst(NamedTuple):
 # and a tuple with the source and destination subnets.  If a new header
 # is detected, the type is 'header' and a tuple of type (str, str),
 # where the first string is the entire line, and the second string
-# is the name of the object.
+# is the name of the object.  Other types are used for different things.
 #
 Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname', 'nat']
 Object = Union[SrcDst,                             # srcdst, nat
@@ -397,6 +395,8 @@ TWICE_NAT_RE = r'''
     $
 '''
 
+# $1 = IP address or None
+# $2 = network object name or None
 OBJECT_NAT_RE = r'''
     ^
     [ ]+
@@ -427,12 +427,15 @@ OBJECT_NAT_RE = r'''
     $
 '''
 
+# $1 = fully-qualified domain name (FQDN)
 HOSTNAME = r'(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]+\.?'
 FQDN_RE = r'''
     [ ]+
     fqdn[ ](?:v4[ ])?(''' + HOSTNAME + r''')
 '''
 
+# $1 = IP address for range start
+# $2 = IP address for range end
 RANGE_RE = r'''
     ^
     [ ]+
@@ -564,7 +567,7 @@ def normalize_prefix_lengths(ip: IPv4Network,
     return PrefixRange(ip, ge, le)
 
 def safe_int(intstr: Optional[str]) -> Optional[int]:
-    """Convert a string to an integer, or None is intstr is None"""
+    """Convert a string to an integer, or None if intstr is None"""
     if intstr is None:
         return None
     return int(intstr)
@@ -585,9 +588,10 @@ def parse_prefix_list(arg: str) -> PrefixRange:
     return normalize_prefix_lengths(net, ge, le)
 
 def addrmasktosubnet(straddr: str, strmask: str) -> Optional[IPv4Network]:
-    """Convert an IP address and a separate IP address used as
+    """Attempt to convert an IP address and a separate IP address used as
     a network mask into a subnet object.  For instance, convert
-    "192.168.100.0", "255.255.255.0" into 192.168.100.0/24."""
+    "192.168.100.0", "255.255.255.0" into 192.168.100.0/24.  If the
+    two addresses are not related, return None instead."""
 
     logging.debug("straddr = %r", straddr)
     logging.debug("strmask = %r", strmask)
@@ -849,7 +853,7 @@ def net_or_grp_object_re(re_match: Match[str],
     # the subnet was defined, but also in any further expansions.
     # That is, there is no need for recursion here.  This is because
     # the IP subnet is added based on header_obj in the main
-    # loop in parse_config().
+    # loop in header_coroutine().
     for src in yield_object_subnets(key):
         yield MatchObj('srcdst', SrcDst(src, ANY))
 
@@ -989,20 +993,27 @@ def subnet_with_mask_re(re_match: Match[str],
     logging.debug("got SUBNET_WITH_MASK_RE = %r", re_match.group(lastidx))
     net = re_match.group(lastidx + 1)
     msk = re_match.group(lastidx + 2)
+    # Attempt to parse net and msk as an IP subnet and subnet mask
     src = addrmasktosubnet(net, msk)
     if src is None:
+        # net and msk are separate IP addresses, so first yield net
         subnetlist = list(subnet_re(re_match, lastidx + 1))
         assert len(subnetlist) == 1
         subnet = subnetlist[0]
         logging.debug('successful subnet_re() = %r', subnet)
         yield subnet
 
+        # msk is problematic because the regex in find_regex() has
+        # already matched this IP address, and it could be the start
+        # of another net/msk.  Instead, signal to find_regex() to parse
+        # again starting at this position.
         new_index = lastidx + 2
         new_startpos = re_match.start(new_index)
         logging.debug('new_index = %r', new_index)
         logging.debug('re_match.start(new_index) = %r', new_startpos)
         yield MatchObj('position', new_startpos)
     else:
+        # Parse of IP subnet and mask was successful
         dst = ANY
         yield MatchObj('srcdst', SrcDst(src, dst))
 
@@ -1013,6 +1024,10 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     dst = ANY
     yield MatchObj('srcdst', SrcDst(src, dst))
 
+# Table of regular expressions that match components in the
+# configuration, and the functions which extract the values from them.
+# The table is indexed by the functions, and prepare_regexes() later
+# uses this table to make two further tables for parsing.
 MATCH_RE_TABLE_RAW = {
     header_re: HEADER_RE,
     extended_asa_acl_remark_re: EXTENDED_ASA_ACL_REMARK_RE,
@@ -1088,8 +1103,17 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
 
 def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
-    If the resolve flag is set, allow matching fqdn statements."""
+    If the resolve flag is set, allow matching fqdn statements.
+    See the Python documentation for writing a tokenizer to see how
+    this is put together.
+
+    https://docs.python.org/3/library/re.html#writing-a-tokenizer
+    """
     assert isinstance(args.resolver, bool)
+
+    # The function names and regexes from MATCH_RE_TABLE_RAW are
+    # converted into named groups and combined into a single, master
+    # regular expression that combines all of the regular expressions.
     match_re_str = '|'.join('(?P<%s>%s)' % (re_func.__name__, re_value)
                             for re_func, re_value in MATCH_RE_TABLE_RAW.items()
                             if re_func.__name__ != "fqdn_re" or args.resolver)
@@ -1108,6 +1132,7 @@ def printline(linenum: int, acl_linenum: Optional[int],
         return
     assert isinstance(args.acllines, bool)
     if not args.acllines:
+        # This is the same format for line numbers as "cat -n"
         print("%6d\t%s" % (linenum, line))
         return
     if acl_linenum is None:
@@ -1179,7 +1204,8 @@ def header_coroutine() -> HeaderType:
             continue
 
         logging.debug('header_line = %r', header_line)
-        if header_line is not None and matchtype == 'srcdst':
+        # Do not include 'nat' subnets in the object
+        if header_line is not None and matchtype != 'nat':
             logging.debug('saving header_obj %r with %r', header_obj, obj.src)
             # Save the src (address of object) using the object name
             OBJECT_DICT[header_obj].add(obj.src)
@@ -1243,6 +1269,8 @@ def aclname_coroutine() -> ACLNameType:
         # Yields either None or a line number
         matchtype, obj, _, linenum, _ = (yield yieldval)
 
+        # Each new line resets aclname in case it is not an ACL.
+        # If it is, aclname will get set again from matchtype 'aclname'.
         if linenum != last_linenum:
             aclname = None
             last_linenum = linenum
@@ -1266,9 +1294,11 @@ def aclname_coroutine() -> ACLNameType:
 ObjectNATYield = Optional[Tuple[int, str]]
 ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
 def objectnat_coroutine() -> ObjectNATType:
-    """Receive match objects and other data from parse_config(),
-    keep state, and return data about the headers to print for NAT
-    objects."""
+    """Receive match objects and other data from parse_config(), keep
+    state, and return data about the headers to print for NAT objects.
+    The matched parameter says that srcmatch matched one of the subnets
+    from the original object, even though it doesn't appear anywhere
+    in the NAT object of the same name."""
 
     header_line = None
     yieldval = None
@@ -1307,12 +1337,14 @@ def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType, ObjectNATType]:
     return header_gen, remark_gen, aclname_gen, objectnat_gen
 
 # mypy's handling for the Generator type is lacking.  The real prototype
-# for this function should be this, but mypy cannot do it without producing
+# for this function should be this, but mypy cannot do it without generating
 # errors:
 #
-# def gen_send(gen_seq: Tuple[HeaderType, RemarkType, ACLNameType],
+# def gen_send(gen_seq: Tuple[HeaderType, RemarkType, ACLNameType,
+#                             ObjectNATType],
 #              matchobj: MatchObj, matched: bool, linenum: int,
-#              line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield]:
+#              line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield,
+#                                  ObjectNATYield]:
 #
 def gen_send(gen_seq: Tuple[Any, Any, Any, Any], matchobj: MatchObj,
              matched: bool, linenum: int, line: str) -> Tuple[Any, ...]:
@@ -1358,7 +1390,10 @@ def parse_config(filedesc: TextIO,
             matchtype, retval = matchobj
             logging.debug("matchtype = %r, retval = %r", matchtype, retval)
             if matchtype not in ('srcdst', 'nat'):
-                if matchtype == 'header' and (dstmatch.ge == 0 or logicalor):
+                # Search the header for IP subnets that might match srcmatch,
+                # but only if we are not searching for dstmatch also.
+                if matchtype == 'header' and (dstmatch.ge == 0
+                                              or args.duplicate):
                     assert isinstance(retval, tuple)
                     _, objname = retval
                     assert isinstance(objname, str)
