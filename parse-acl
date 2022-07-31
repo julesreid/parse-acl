@@ -1309,17 +1309,15 @@ def objectnat_coroutine() -> ObjectNATType:
         logging.debug("matchtype = %r, obj = %r, matched = %r, "
                       "linenum = %r, line = %r",
                       matchtype, obj, matched, linenum, line)
-        if matchtype == 'header':
-            if matched:
-                header_line = line
-                header_linenum = linenum
-            else:
-                header_line = None
+        if matchtype == 'header' and matched:
+            header_line = line
+            header_linenum = linenum
             yieldval = None
             continue
         if matchtype == 'nat' and header_line:
             yieldval = header_linenum, header_line
             continue
+        header_line = None
         yieldval = None
 
 def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType, ObjectNATType]:
