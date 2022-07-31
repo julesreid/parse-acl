@@ -28,7 +28,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sys
 import re
-from ipaddress import IPv4Network, IPv4Address, NetmaskValueError
+from ipaddress import (IPv4Network as IPv4Network_orig, IPv4Address,
+                       NetmaskValueError)
 from socket import gethostbyname_ex, gaierror
 import argparse
 import logging
@@ -36,6 +37,15 @@ from itertools import product
 from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
                     Iterable, Tuple, Dict, Set, Pattern, Literal, Collection,
                     TextIO, Callable, Generator)
+
+class IPv4Network(IPv4Network_orig):
+    """Redefine IPv4Network to remove the "/32" for host addresses"""
+    def __str__(self):
+        retval = super(IPv4Network, self).__str__()
+        # For Python 3.9 and above, use removesuffix()
+        if retval.endswith('/32'):
+            return retval[:-3]
+        return retval
 
 # Set some types used for holding data
 #
