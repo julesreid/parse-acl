@@ -40,7 +40,7 @@ from typing import (Optional, NamedTuple, Union, Sequence, Any, Match,
 
 class IPv4Network(IPv4Network_orig):
     """Redefine IPv4Network to remove the "/32" for host addresses"""
-    def __str__(self):
+    def __str__(self) -> str:
         retval = super(IPv4Network, self).__str__()
         # For Python 3.9 and above, use removesuffix()
         if retval.endswith('/32'):
