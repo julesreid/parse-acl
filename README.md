@@ -1,7 +1,7 @@
 # parse-acl
 ## Find prefix ranges in ACLs from a Cisco firewall or router
 
-This command takes the configuration of a Cisco firewall or router and parses it for subnets that meet certain criteria.
+This command takes the configuration of a Cisco ASA firewall or router and parses it for subnets that meet certain criteria.
 The matching arguments use the same syntax as Cisco prefix lists, but
 remove restrictions with the allowable lengths to make matching easier.
 A subnet can be a single IP address or can be a subnet with a prefix length that represents the
@@ -16,13 +16,14 @@ if both the source and destination prefix ranges match
 (this can be changed to match either with the ```--or``` option).
 If not specified, the source and destination prefix ranges default to ```0.0.0.0/0 le 32```,
 which matches any subnet.  Protocols such as ```icmp``` are ignored, as are ```udp```
-and ```tcp``` port numbers.  The program is only concerned with layer 3 IP addresses.
+and ```tcp``` port numbers.  The program is only concerned with layer 3 IPv4 addresses.
 
 Objects and object groups are expanded so that the IP subnets contained in them
 are tested whenever the object name is encountered, which matches the behavior of
 Cisco firewalls.
 
-The configuration is currently read from standard input.  In a shell environment, this requires using
+The configuration is read from the files listed on the command line, or if there are none, from
+standard input.  In a shell environment, this requires using
 redirection from a file using ```<```.  For instance, ```parse-acl -s 1.1.1.1 < firewall-configuration```.
 
 Ideally, a subnet is normalized, meaning that the host portion of the subnet is all zeroes.
@@ -35,14 +36,14 @@ This is also relevant when dealing with configurations that have an IP address a
     ip address 1.2.3.4 255.255.255.0
 
 Because the statement has a subnet mask and is stored as ```1.2.3.4/24```,
-it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will not match
-(although ```1.2.3.0/24 le 32``` will match that and all other host addresses in the subnet).
+it is treated as ```1.2.3.0/24``` when matching.  As a special case, it will also match the IP address
+in the statement as a host address (that is, ```1.2.3.4/32```).
 
 ## Command-line options
 
 ### Synopsis
 
-```parse-acl [-h] [-s SOURCE] [-d DESTINATION] [-x] [-v] [-t SOURCE1 SOURCE1 MINLEN MAXLEN]```
+```parse-acl [-h] [-s SOURCE] [-d DESTINATION] [-x] [-p] [-r] [-v] [-o OBJECT | -O] [-l] [-n] [-a] [configs [configs ...]]```
 
 ### Optional arguments
 
@@ -55,7 +56,6 @@ it is treated as ```1.2.3.0/24``` when matching.  This means ```1.2.3.4``` will 
 |  ```-p```, ```--duplicate``` |      duplicate the source address as the destination address |
 |  ```-r```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
 | ```-v```, ```--verbose``` |        be verbose |
-|  ```-t``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN*, ```--test``` *SOURCE1* *SOURCE2* *MINLEN* *MAXLEN* | test the arguments from the command line |
 | ``` -o``` *OBJECT*, ```--show-object``` *OBJECT* |                        show the IP addresses for the object |
 | ```-O```, ```--show-objects``` |    show the IP addresses for all objects |
 |  ```-l```, ```--resolve```     |    process ```fqdn``` statements by resolving DNS |
