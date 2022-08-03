@@ -117,7 +117,7 @@ SUBNET_WITH_MASK_RE = r'''
     (?:
         [ ](?:net)?mask
     )?
-    (?:[ ]|\/)
+    [ /]
     (''' + IP_ADDR + r''')
 '''
 
