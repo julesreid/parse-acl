@@ -1249,28 +1249,30 @@ def remark_coroutine() -> RemarkType:
         # Yields either None or a tuple with the line number and line
         matchtype, obj, _, linenum, _ = (yield yieldval)
 
-        if matchtype == 'aclname':
-            if current_remark:
-                # Set the yield value for upcoming 'srcdst'
-                assert linenum == current_remark_line + 1
+        if matchtype == 'remark':
+            assert isinstance(obj, str)
+            current_remark_line = linenum
+            current_remark = obj
+            logging.debug("current_remark_line is %r", current_remark_line)
+            logging.debug("current_remark is %r", current_remark)
+            yieldval = None
+            continue
+
+        if current_remark_line and linenum == current_remark_line + 1:
+            # The requirement here is that a 'remark' match type
+            # is only good for 'acltype' on a line that immediately
+            # follows.  If that is met, then start yielding for any
+            # 'srcdst' match types that are on the same line.
+            if matchtype == 'aclname':
+                logging.debug("set yieldval")
                 yieldval = current_remark_line, current_remark
-            else:
-                # No remark, so upcoming 'srcdst' will get None
-                yieldval = None
-            current_remark = None
-            continue
+                continue
+            if matchtype == 'srcdst':
+                continue
 
-        if matchtype != 'remark':
-            assert current_remark is None
-            continue
-
-        assert isinstance(obj, str)
-        current_remark = obj
-        current_remark_line = linenum
-        logging.debug("current_remark is %r", current_remark)
-        logging.debug("current_remark_line is %r", current_remark_line)
-        # Only set the yield value when match type is 'srcdst'
+        # None of the critera met, so reset everything
         yieldval = None
+        current_remark_line = None
 
 ACLNameYield = Optional[int]
 ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
