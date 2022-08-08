@@ -96,8 +96,8 @@ useful when verifying routing.
 | ```1.1.1.1```                 | Look for a single IP address |
 | ```1.1.1.0/24```              | Look for a specific subnet |
 | ```1.1.1.0/24 le 32```        | Look for any IP address or subnet in a subnet |
-| ```1.1.1.1 le 32```           | Look for a single IP address or any other supernets that match |
-| ```1.1.1.1 ge 1 le 32```      | Look for a single IP address or any other supernets that match except the default route |
+| ```1.1.1.1 ge 0```            | Look for a single IP address or any other supernets that match |
+| ```1.1.1.1 ge 1```            | Look for a single IP address or any other supernets that match except the default route |
 | ```1.1.0.0/16 ge 0```         | Look for any supernets of a subnet including the default route |
 | ```1.1.0.0/16 ge 1```         | Look for any supernets of a subnet except the default route |
 | ```1.1.1.0/24 ge 1 le 32```   | Look for any subnets or supernets of a subnet except the default route |
