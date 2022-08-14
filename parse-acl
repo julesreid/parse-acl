@@ -720,11 +720,6 @@ Examples:
                         help='add another matching sequence with the source\n'
                              'and destination addresses swapped',
                         action='store_true')
-    parser.add_argument('-r', '--or',
-                        help='use a logical-or operation instead of\n'
-                             'logical-and between source and destination',
-                        action='store_true',
-                        dest='logicalor')
     parser.add_argument('-v', '--verbose',
                         help='be verbose',
                         action='store_const',
@@ -1433,7 +1428,6 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     the state objects held in the ParserState object, and prepares
     to print lines based on the yielded results."""
 
-    logicalor = args.logicalor
     printit = not (args.objects or args.object)
 
     srcmatch = parser.srcmatch
@@ -1467,8 +1461,7 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     # See if the src/dst from the config matches srcmatch/dstmatch
     match_src = match_subnet_prefixrange(src, srcmatch)
     match_dst = match_subnet_prefixrange(dst, dstmatch)
-    matched = (match_src or match_dst if logicalor
-               else match_src and match_dst)
+    matched = match_src and match_dst
     (header_result, remark_result, acl_linenum,
      objectnat) = parser.gen_send(matchobj, matched, linenum, line)
     logging.debug('header_result = %r', header_result)
@@ -1595,7 +1588,6 @@ def main() -> None:
 
     match_re = prepare_regexes(args)
 
-    assert isinstance(args.logicalor, bool)
     assert isinstance(args.objects, bool)
     assert isinstance(args.object, (str, type(None)))
     filenames = args.configs
