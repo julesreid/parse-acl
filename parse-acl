@@ -665,8 +665,10 @@ class PrefixRangeAction(argparse.Action):
                  option_string: Optional[str] = None) -> None:
         """Set the PrefixLength argument"""
         assert isinstance(values, str)
-        srcmatch = parse_prefix_list(values)
-        setattr(namespace, self.dest, srcmatch)
+        srcmatchlist: Collection[PrefixRange]
+        srcmatchlist = tuple(parse_prefix_list(prefix_list)
+                             for prefix_list in values.split(','))
+        setattr(namespace, self.dest, srcmatchlist)
 
 def getoptions() -> argparse.Namespace:
     """Parse the command-line options"""
@@ -700,14 +702,14 @@ Examples:
     parser.add_argument('-s', '--source',
                         help='source prefix range to match in configuration',
                         # Match anything by default
-                        default=PrefixRange(ANY, ge=0, le=32),
+                        default=(PrefixRange(ANY, ge=0, le=32),),
                         action=PrefixRangeAction,
                         metavar='SOURCE')
     parser.add_argument('-d', '--destination',
                         help='destination prefix range to match in '
                              'configuration',
                         # Match anything by default
-                        default=PrefixRange(ANY, ge=0, le=32),
+                        default=(PrefixRange(ANY, ge=0, le=32),),
                         action=PrefixRangeAction,
                         metavar='DESTINATION')
     parser.add_argument('-x', '--swap',
@@ -1151,12 +1153,17 @@ def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
+SEEN_LINENUMS: Set[int] = set()
+
 def printline(linenum: int, acl_linenum: Optional[int],
               line: str, args: argparse.Namespace) -> None:
     """Print a line from the configuration"""
 
     logging.debug("linenum = %r, acl_linenum = %r, line = %r",
                   linenum, acl_linenum, line)
+    if linenum in SEEN_LINENUMS:
+        return
+    SEEN_LINENUMS.add(linenum)
     assert isinstance(args.linenumber, bool)
     if not args.linenumber:
         print(line)
@@ -1194,8 +1201,65 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
 
 LineNum = int
 CoroutineSend = Tuple[Matchtype, Object, bool, LineNum, Line]
+
 HeaderYield = Optional[Tuple[LineNum, Line]]
+RemarkYield = Optional[Tuple[LineNum, Line]]
+ACLNameYield = Optional[LineNum]
+ObjectNATYield = Optional[Tuple[LineNum, Line]]
+
 HeaderType = Generator[HeaderYield, CoroutineSend, None]
+RemarkType = Generator[RemarkYield, CoroutineSend, None]
+ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
+ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
+
+class ParserState:
+    """Contain the state for parsing a pair of PrefixRanges objects.
+    If the user has specified multiple prefix ranges to parse, there
+    will be one instance of this class for each permutation of source
+    and destination prefix ranges.  This is necessary because a single
+    state machine cannot be used for multiple ranges, otherwise a
+    range overwrites the state used by another range and the right
+    lines are not output."""
+
+    def __init__(self, srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
+        self.srcmatch = srcmatch
+        self.dstmatch = dstmatch
+        self._gen_init()
+
+    def __repr__(self) -> str:
+        return ('<ParserState object at %s, '
+                'srcmatch = %r, dstmatch = %r>'
+                % (hex(id(self)), self.srcmatch, self.dstmatch))
+
+    def _gen_init(self) -> None:
+        """Create the generator objects that will be used as state
+        machines to parse the header lines, remarks, and ACL start
+        lines."""
+        self._header_gen = header_coroutine()
+        self._remark_gen = remark_coroutine()
+        self._aclname_gen = aclname_coroutine()
+        self._objectnat_gen = objectnat_coroutine()
+        assert next(self._header_gen) is None
+        assert next(self._remark_gen) is None
+        assert next(self._aclname_gen) is None
+        assert next(self._objectnat_gen) is None
+
+    def gen_send(self, matchobj: MatchObj, matched: bool, linenum: int,
+                 line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield,
+                                     ObjectNATYield]:
+        """Send the same match object and other data to the generator
+        objects that are part of the parser state."""
+        logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
+                      matchobj, matched, linenum, line)
+        send_arg = (matchobj.matchtype, matchobj.obj, matched, linenum, line)
+        ret_seq: Tuple[Union[HeaderYield, RemarkYield, ACLNameYield,
+                             ObjectNATYield], ...]
+        ret_seq = (self._header_gen.send(send_arg),)
+        ret_seq += (self._remark_gen.send(send_arg),)
+        ret_seq += (self._aclname_gen.send(send_arg),)
+        ret_seq += (self._objectnat_gen.send(send_arg),)
+        return ret_seq
+
 def header_coroutine() -> HeaderType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about the headers to print."""
@@ -1254,8 +1318,6 @@ def header_coroutine() -> HeaderType:
             else:
                 yieldval = None
 
-RemarkYield = Optional[Tuple[LineNum, Line]]
-RemarkType = Generator[RemarkYield, CoroutineSend, None]
 def remark_coroutine() -> RemarkType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about remarks to print."""
@@ -1292,8 +1354,6 @@ def remark_coroutine() -> RemarkType:
         yieldval = None
         current_remark_line = None
 
-ACLNameYield = Optional[LineNum]
-ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
 def aclname_coroutine() -> ACLNameType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about the line where an ACL starts"""
@@ -1328,8 +1388,6 @@ def aclname_coroutine() -> ACLNameType:
             aclname_linenum = None
         yieldval = aclname_linenum
 
-ObjectNATYield = Optional[Tuple[LineNum, LineNum]]
-ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
 def objectnat_coroutine() -> ObjectNATType:
     """Receive match objects and other data from parse_config(), keep
     state, and return data about the headers to print for NAT objects.
@@ -1357,45 +1415,6 @@ def objectnat_coroutine() -> ObjectNATType:
         header_line = None
         yieldval = None
 
-def gen_init() -> Tuple[HeaderType, RemarkType, ACLNameType, ObjectNATType]:
-    """Create a sequence of generator objects that will be used
-    as state machines to parse the header lines, remarks, and ACL
-    start lines."""
-    header_gen = header_coroutine()
-    remark_gen = remark_coroutine()
-    aclname_gen = aclname_coroutine()
-    objectnat_gen = objectnat_coroutine()
-    assert next(header_gen) is None
-    assert next(remark_gen) is None
-    assert next(aclname_gen) is None
-    assert next(objectnat_gen) is None
-    return header_gen, remark_gen, aclname_gen, objectnat_gen
-
-# mypy's handling for the Generator type is lacking.  The real prototype
-# for this function should be this, but mypy cannot do it without generating
-# errors:
-#
-# def gen_send(gen_seq: Tuple[HeaderType, RemarkType, ACLNameType,
-#                             ObjectNATType],
-#              matchobj: MatchObj, matched: bool, linenum: int,
-#              line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield,
-#                                  ObjectNATYield]:
-#
-def gen_send(gen_seq: Tuple[Any, Any, Any, Any], matchobj: MatchObj,
-             matched: bool, linenum: int, line: str) -> Tuple[Any, ...]:
-    """Given a sequence of generator objects, send the same match
-    object and other data to each one."""
-    logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
-                  matchobj, matched, linenum, line)
-    ret_seq: Tuple[Any, ...] = ()
-    for gen in gen_seq:
-        retval = gen.send((matchobj.matchtype, matchobj.obj, matched,
-                           linenum, line))
-        ret_seq += (retval,)
-    return ret_seq
-
-### Configuration parsing
-
 def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
     """Determine if a prefix range 'prefix' matches any of the subnets
     in the object named by 'objname'."""
@@ -1408,76 +1427,114 @@ def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
             return True
     return False
 
-def parse_config(filedesc: TextIO,
-                 srcmatch: PrefixRange, dstmatch: PrefixRange, /,
-                 match_re: Pattern[str],
-                 logicalor: bool, printit: bool,
-                 args: argparse.Namespace) -> None:
-    """Parse the configuration and search for lines which match ACLs,
-    network objects, or other places IP addresses are used.  If printit
-    is True, match the srcmatch and destmatch objects as the networks
-    are parsed.  Otherwise, the arguments are ignored and this routine
-    is used to capture the networks for all objects in OBJECT_DICT."""
+def parser_matchobj(parser: ParserState, matchobj: MatchObj,
+                    args: argparse.Namespace, linenum: int, line: str) -> bool:
+    """Core engine for handling match objects.  This sends data to
+    the state objects held in the ParserState object, and prepares
+    to print lines based on the yielded results."""
 
-    gen_seq = gen_init()
+    logicalor = args.logicalor
+    printit = not (args.objects or args.object)
+    duplicate = args.duplicate
+
+    srcmatch = parser.srcmatch
+    dstmatch = parser.dstmatch
+    logging.debug("srcmatch = %r, dstmatch = %r", srcmatch, dstmatch)
+    matchtype, retval = matchobj
+    logging.debug("matchtype = %r, retval = %r", matchtype, retval)
+    if matchtype not in ('srcdst', 'nat'):
+        # Search the header for IP subnets that might match srcmatch,
+        # but only if we are not searching for dstmatch also.
+        if matchtype == 'header' and (dstmatch.ge == 0 or duplicate):
+            assert isinstance(retval, tuple)
+            _, objname = retval
+            assert isinstance(objname, str)
+            matched = prefixinobject(objname, srcmatch)
+        else:
+            matched = False
+        logging.debug("prefixinobject returned %r", matched)
+        parser.gen_send(matchobj, matched, linenum, line)
+        return False
+    assert isinstance(retval, SrcDst)
+    src, dst = retval
+    logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
+                  src, srcmatch, dst, dstmatch)
+
+    if not printit:
+        logging.debug('continue through loop for more networks')
+        parser.gen_send(matchobj, False, linenum, line)
+        return False
+
+    # See if the src/dst from the config matches srcmatch/dstmatch
+    match_src = match_subnet_prefixrange(src, srcmatch)
+    match_dst = match_subnet_prefixrange(dst, dstmatch)
+    matched = (match_src or match_dst if logicalor
+               else match_src and match_dst)
+    (header_result, remark_result, acl_linenum,
+     objectnat) = parser.gen_send(matchobj, matched, linenum, line)
+    logging.debug('header_result = %r', header_result)
+    logging.debug('remark_result = %r', remark_result)
+    logging.debug('acl_linenum = %r', acl_linenum)
+    logging.debug('objectnat = %r', objectnat)
+
+    if not matched and not objectnat:
+        # No match this time, but iterate for more
+        logging.debug('no match')
+        return False
+
+    logging.debug('got match')
+    if remark_result:
+        printline(remark_result[0], acl_linenum, remark_result[1], args)
+    elif header_result:
+        printline(header_result[0], acl_linenum, header_result[1], args)
+    elif objectnat:
+        printline(objectnat[0], acl_linenum, objectnat[1], args)
+    printline(linenum, acl_linenum, line, args)
+    # Return True, otherwise the same line can be printed more
+    # than once
+    return True
+
+def iterparsers(parserlist: Collection[ParserState], matchobj: MatchObj,
+                args: argparse.Namespace, linenum: int, line: str) -> bool:
+    """Iterate through the parsers listed in parserlist and call
+    parser_matchobj for each one.  If True is returned, this indicates
+    a line was printed, so we can short circuit and go to the next
+    line."""
+
+    for parser in parserlist:
+        if parser_matchobj(parser, matchobj, args, linenum, line):
+            return True
+    return False
+
+def create_parse_list(srcmatchlist: Collection[PrefixRange],
+                      dstmatchlist: Collection[PrefixRange]) \
+        -> Collection[ParserState]:
+    """Create the parser list by creating an instance of the
+    ParserState class for each permutation of source and destination
+    prefix ranges."""
+
+    return tuple(ParserState(srcmatch, dstmatch)
+                 for srcmatch, dstmatch in product(srcmatchlist, dstmatchlist))
+
+def parse_config(filedesc: TextIO,
+                 srcmatchlist: Collection[PrefixRange],
+                 dstmatchlist: Collection[PrefixRange], /,
+                 match_re: Pattern[str],
+                 args: argparse.Namespace) -> None:
+    """Given a file descriptor and a collection of source and
+    destination prefix ranges, parse the configuration and search
+    for lines which match ACLs, network objects, or other places IP
+    addresses are used.  """
+
+    parserlist = create_parse_list(srcmatchlist, dstmatchlist)
+    logging.debug("parserlist = %r", parserlist)
     for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
         for matchobj in find_regex(match_re, line):
-            matchtype, retval = matchobj
-            logging.debug("matchtype = %r, retval = %r", matchtype, retval)
-            if matchtype not in ('srcdst', 'nat'):
-                # Search the header for IP subnets that might match srcmatch,
-                # but only if we are not searching for dstmatch also.
-                if matchtype == 'header' and (dstmatch.ge == 0
-                                              or args.duplicate):
-                    assert isinstance(retval, tuple)
-                    _, objname = retval
-                    assert isinstance(objname, str)
-                    matched = prefixinobject(objname, srcmatch)
-                else:
-                    matched = False
-                logging.debug("prefixinobject returned %r", matched)
-                gen_send(gen_seq, matchobj, matched, linenum, line)
-                continue
-            assert isinstance(retval, SrcDst)
-            src, dst = retval
-            logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
-                          src, srcmatch, dst, dstmatch)
-
-            if not printit:
-                logging.debug('continue through loop for more networks')
-                gen_send(gen_seq, matchobj, False, linenum, line)
-                continue
-
-            # See if the src/dst from the config matches srcmatch/dstmatch
-            match_src = match_subnet_prefixrange(src, srcmatch)
-            match_dst = match_subnet_prefixrange(dst, dstmatch)
-            matched = (match_src or match_dst if logicalor
-                       else match_src and match_dst)
-            (header_result, remark_result, acl_linenum,
-             objectnat) = gen_send(gen_seq, matchobj, matched, linenum, line)
-            logging.debug('header_result = %r', header_result)
-            logging.debug('remark_result = %r', remark_result)
-            logging.debug('acl_linenum = %r', acl_linenum)
-            logging.debug('objectnat = %r', objectnat)
-
-            if not matched and not objectnat:
-                # No match this time, but iterate for more
-                logging.debug('no match')
-                continue
-
-            logging.debug('got match')
-            if remark_result:
-                printline(remark_result[0], acl_linenum, remark_result[1], args)
-            elif header_result:
-                printline(header_result[0], acl_linenum, header_result[1], args)
-            elif objectnat:
-                printline(objectnat[0], acl_linenum, objectnat[1], args)
-            printline(linenum, acl_linenum, line, args)
-            # Break now, otherwise the same line can be printed more
-            # than once
-            break
+            # If iterparsers returns True, it means a line was printed
+            if iterparsers(parserlist, matchobj, args, linenum, line):
+                break
 
 def blockkey(block: AddrBlock) -> IPv4Network:
     """Provide key for sorting objects of type IPv4Network or Range"""
@@ -1504,8 +1561,10 @@ def main() -> None:
 
     args = getoptions()
 
-    assert isinstance(args.source, PrefixRange)
-    assert isinstance(args.destination, PrefixRange)
+    assert isinstance(args.source, tuple)
+    assert isinstance(args.destination, tuple)
+    #for pr in args.source: assert isinstance(pr, PrefixRange)
+    #for pr in args.destination: assert isinstance(pr, PrefixRange)
     srcmatch = args.source
     dstmatch = args.destination
 
@@ -1539,15 +1598,13 @@ def main() -> None:
     assert isinstance(filenames, list)
     for n, (filename, filedesc) in enumerate(getfiledescs(filenames)):
         OBJECT_DICT.clear()
+        SEEN_LINENUMS.clear()
         if filename is not None and len(filenames) > 1:
             if n > 0:
                 print()
             print(filename + ':')
 
-        parse_config(filedesc, srcmatch, dstmatch, match_re,
-                     logicalor=args.logicalor,
-                     printit=not (args.objects or args.object),
-                     args=args)
+        parse_config(filedesc, srcmatch, dstmatch, match_re, args=args)
 
         if args.objects:
             for k, v in sorted(OBJECT_DICT.items()):

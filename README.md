@@ -43,7 +43,7 @@ in the statement as a host address (that is, ```1.2.3.4/32```).
 
 ### Synopsis
 
-```parse-acl [-h] [-s SOURCE] [-d DESTINATION] [-x] [-p] [-r] [-v] [-o OBJECT | -O] [-l] [-n] [-a] [configs [configs ...]]```
+```parse-acl [-h] [-s SOURCE[,...]] [-d DESTINATION[,...]] [-x] [-p] [-r] [-v] [-o OBJECT | -O] [-l] [-n] [-a] [configs [configs ...]] [FILE...]```
 
 ### Optional arguments
 
@@ -72,7 +72,7 @@ The prefix length must be 0 ≤ length ≤ 32, and 0 ≤ ```ge``` ≤ ```le``` �
 Because spaces are used in the syntax, in a shell environment the argument must
 be quoted.  Example: 
 
-    parse-acl -s '1.2.3.0/24 le 32' -d '192.168.0.0/16 ge 0 le 32' < file
+    parse-acl -s '1.2.3.0/24 le 32' -d '192.168.0.0/16 ge 0 le 32' FILE...
 
 Note that unlike Cisco prefix lists, there is no dependency for
 ```ge``` or ```le``` on the prefix length.  For instance, this will
@@ -84,12 +84,22 @@ generate an error on a Cisco router:
 By removing this restriction, supernets can be found also, which is
 useful when verifying routing.
 
+The *SOURCE* and *DESTINATION* arguments can contain multiple prefix
+ranges separated by commas.  For example:
+
+    parse-acl -p -r -s '172.16.0.0/12 le 32,192.0.2.20' FILE...
+
+This is equivalent to running ```parse-acl``` twice and merging the
+results.
+
 ## Requirements
 
 - Python 3.8
 - Bourne shell (to run tests)
 
 ## Examples
+
+### Prefix list examples
 
 | Argument | Description |
 | --- | --- |
