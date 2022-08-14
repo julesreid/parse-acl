@@ -8,7 +8,7 @@ network range.
 
 To do:
 
-* Test cases
+• Test cases
 
 Copyright © 2022 J. Cowley
 
@@ -58,6 +58,16 @@ class PrefixRange(NamedTuple):
     subnet: IPv4Network
     ge: PrefixLength
     le: PrefixLength
+    def __repr__(self) -> str:
+        subnet = self.subnet
+        prefixlen = subnet.prefixlen
+        result = '<PrefixRange ' + str(subnet)
+        if self.ge != prefixlen:
+            result += f' ge {self.ge}'
+        if self.le != prefixlen:
+            result += f' le {self.le}'
+        result += '>'
+        return result
 
 class Range(NamedTuple):
     """Represent a range of IP addresses"""
@@ -73,7 +83,7 @@ class SrcDst(NamedTuple):
     src: AddrBlock
     dst: AddrBlock
 
-# Return type for routines that match subnets.  It is a two-element
+# Return type for routines that handle match groups.  It is a two-element
 # tuple, where the first element is a string identifier that specifies
 # the type of the second element.  The usual format is type 'srcdst'
 # and a tuple with the source and destination subnets.  If a new header
@@ -82,9 +92,11 @@ class SrcDst(NamedTuple):
 # is the name of the object.  Other types are used for different things.
 #
 Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname', 'nat']
+Line = str
+ObjName = str
 Object = Union[SrcDst,                             # srcdst, nat
                int,                                # position
-               Tuple[str, str],                    # header
+               Tuple[Line, ObjName],               # header
                str]                                # remark, aclname
 
 class MatchObj(NamedTuple):
@@ -522,7 +534,7 @@ def match_subnet_prefixrange(subnet: AddrBlock, prefix: PrefixRange) -> bool:
         return match_range(subnet, prefix)
     return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
-### Parsing
+### Option handling
 
 def safe_IPv4Network(ipstr: str) -> IPv4Network:
     """Convert a string to an IPv4Network but issue a warning if the network
@@ -754,7 +766,7 @@ Examples:
 
     return args
 
-# Parse routines
+### Match group handling
 
 def header_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the header of a standard or extended ACL or object"""
@@ -970,7 +982,8 @@ def range_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
         raise SyntaxError('invalid range')
     yield MatchObj('srcdst', SrcDst(Range(ip_range_start, ip_range_end), ANY))
 
-def ip_address_statement_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+def ip_address_statement_re(re_match: Match[str],
+                            lastidx: int) -> Iterable[MatchObj]:
     """Match the IP_ADDRESS_STATEMENT_RE regex"""
     logging.debug("got IP_ADDRESS_STATEMENT_RE = %r", re_match.group(lastidx))
     ipaddr = re_match.group(lastidx + 1)
@@ -1060,6 +1073,8 @@ MATCH_RE_TABLE_RAW = {
     subnet_with_mask_re: SUBNET_WITH_MASK_RE,
     subnet_re: SUBNET_RE,
 }
+
+### Miscellanous
 
 def processgroups(n: Iterable[Match[str]]) -> Iterable[MatchObj]:
     """Given an iterable of regex matches (from finditer()), dispatch
@@ -1175,8 +1190,11 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
         with filedesc:
             yield filename, filedesc
 
-CoroutineSend = Tuple[Matchtype, Object, bool, int, str]
-HeaderYield = Optional[Tuple[int, str]]
+### State machines
+
+LineNum = int
+CoroutineSend = Tuple[Matchtype, Object, bool, LineNum, Line]
+HeaderYield = Optional[Tuple[LineNum, Line]]
 HeaderType = Generator[HeaderYield, CoroutineSend, None]
 def header_coroutine() -> HeaderType:
     """Receive match objects and other data from parse_config(),
@@ -1236,7 +1254,7 @@ def header_coroutine() -> HeaderType:
             else:
                 yieldval = None
 
-RemarkYield = Optional[Tuple[int, str]]
+RemarkYield = Optional[Tuple[LineNum, Line]]
 RemarkType = Generator[RemarkYield, CoroutineSend, None]
 def remark_coroutine() -> RemarkType:
     """Receive match objects and other data from parse_config(),
@@ -1270,11 +1288,11 @@ def remark_coroutine() -> RemarkType:
             if matchtype == 'srcdst':
                 continue
 
-        # None of the critera met, so reset everything
+        # None of the criteria met, so reset everything
         yieldval = None
         current_remark_line = None
 
-ACLNameYield = Optional[int]
+ACLNameYield = Optional[LineNum]
 ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
 def aclname_coroutine() -> ACLNameType:
     """Receive match objects and other data from parse_config(),
@@ -1310,7 +1328,7 @@ def aclname_coroutine() -> ACLNameType:
             aclname_linenum = None
         yieldval = aclname_linenum
 
-ObjectNATYield = Optional[Tuple[int, str]]
+ObjectNATYield = Optional[Tuple[LineNum, LineNum]]
 ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
 def objectnat_coroutine() -> ObjectNATType:
     """Receive match objects and other data from parse_config(), keep
@@ -1376,8 +1394,10 @@ def gen_send(gen_seq: Tuple[Any, Any, Any, Any], matchobj: MatchObj,
         ret_seq += (retval,)
     return ret_seq
 
+### Configuration parsing
+
 def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
-    """Determine if a prefix range 'prefix' matches any of the prefixes
+    """Determine if a prefix range 'prefix' matches any of the subnets
     in the object named by 'objname'."""
     logging.debug("objname = %r, prefix = %r", objname, prefix)
     if objname not in OBJECT_DICT:
