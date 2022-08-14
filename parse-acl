@@ -716,9 +716,9 @@ Examples:
                         help='swap the source and destinaton addresses\n'
                              '(for convenience)',
                         action='store_true')
-    parser.add_argument('-p', '--duplicate',
-                        help='duplicate the source address as the\n'
-                             'destination address',
+    parser.add_argument('-p', '--transpose',
+                        help='add another matching sequence with the source\n'
+                             'and destination addresses swapped',
                         action='store_true')
     parser.add_argument('-r', '--or',
                         help='use a logical-or operation instead of\n'
@@ -1435,7 +1435,6 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
 
     logicalor = args.logicalor
     printit = not (args.objects or args.object)
-    duplicate = args.duplicate
 
     srcmatch = parser.srcmatch
     dstmatch = parser.dstmatch
@@ -1445,7 +1444,7 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     if matchtype not in ('srcdst', 'nat'):
         # Search the header for IP subnets that might match srcmatch,
         # but only if we are not searching for dstmatch also.
-        if matchtype == 'header' and (dstmatch.ge == 0 or duplicate):
+        if matchtype == 'header' and dstmatch.ge == 0:
             assert isinstance(retval, tuple)
             _, objname = retval
             assert isinstance(objname, str)
@@ -1507,14 +1506,22 @@ def iterparsers(parserlist: Collection[ParserState], matchobj: MatchObj,
     return False
 
 def create_parse_list(srcmatchlist: Collection[PrefixRange],
-                      dstmatchlist: Collection[PrefixRange]) \
-        -> Collection[ParserState]:
+                      dstmatchlist: Collection[PrefixRange],
+                      args: argparse.Namespace) -> Collection[ParserState]:
     """Create the parser list by creating an instance of the
     ParserState class for each permutation of source and destination
-    prefix ranges."""
+    prefix ranges.  If the transpose option is given, also create
+    another parse list to match with the source and destination
+    addresses swapped."""
 
-    return tuple(ParserState(srcmatch, dstmatch)
-                 for srcmatch, dstmatch in product(srcmatchlist, dstmatchlist))
+    retval = tuple(ParserState(srcmatch, dstmatch)
+                   for srcmatch, dstmatch
+                   in product(srcmatchlist, dstmatchlist))
+    if args.transpose:
+        retval += tuple(ParserState(dstmatch, srcmatch)
+                        for srcmatch, dstmatch
+                        in product(srcmatchlist, dstmatchlist))
+    return retval
 
 def parse_config(filedesc: TextIO,
                  srcmatchlist: Collection[PrefixRange],
@@ -1526,7 +1533,7 @@ def parse_config(filedesc: TextIO,
     for lines which match ACLs, network objects, or other places IP
     addresses are used.  """
 
-    parserlist = create_parse_list(srcmatchlist, dstmatchlist)
+    parserlist = create_parse_list(srcmatchlist, dstmatchlist, args)
     logging.debug("parserlist = %r", parserlist)
     for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
@@ -1582,9 +1589,6 @@ def main() -> None:
     assert isinstance(args.swap, bool)
     if args.swap:
         srcmatch, dstmatch = dstmatch, srcmatch
-    assert isinstance(args.duplicate, bool)
-    if args.duplicate:
-        dstmatch = srcmatch
 
     logging.debug("srcmatch = %r", srcmatch)
     logging.debug("dstmatch = %r", dstmatch)

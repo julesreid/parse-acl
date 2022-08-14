@@ -53,7 +53,7 @@ in the statement as a host address (that is, ```1.2.3.4/32```).
 | ```-s``` *SOURCE*, ```--source``` *SOURCE* | source prefix range to match in configuration |
 | ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* |                        destination prefix range to match in configuration
 |  ```-x```, ```--swap``` |        swap the source and destinaton addresses (for convenience) |
-|  ```-p```, ```--duplicate``` |      duplicate the source address as the destination address |
+|  ```-p```, ```--transpose``` |      add another matching sequence with the source and destination addresses swapped |
 |  ```-r```, ```--or``` |             use a logical-or operation instead of logical-and between source and destination |
 | ```-v```, ```--verbose``` |        be verbose |
 | ``` -o``` *OBJECT*, ```--show-object``` *OBJECT* |                        show the IP addresses for the object |
