@@ -91,13 +91,14 @@ class SrcDst(NamedTuple):
 # where the first string is the entire line, and the second string
 # is the name of the object.  Other types are used for different things.
 #
-Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname', 'nat']
+Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname',
+                    'nat', 'description']
 Line = str
 ObjName = str
-Object = Union[SrcDst,                             # srcdst, nat
-               int,                                # position
-               Tuple[Line, ObjName],               # header
-               str]                                # remark, aclname
+Object = Union[SrcDst,                          # srcdst, nat
+               int,                             # position
+               Tuple[Line, ObjName],            # header
+               str]                             # remark, aclname, description
 
 class MatchObj(NamedTuple):
     """Generic return type from the matching functions"""
@@ -217,6 +218,12 @@ EXTENDED_ASA_ACL_REMARK_RE = r'''
     (\S+)[ ]
     remark[ ]
     .*
+'''
+
+# $1 = object name
+DESCRIPTION_RE = r'''
+    ^
+    [ ]* description [ ] (.+)
 '''
 
 ## Standard numbered
@@ -782,6 +789,13 @@ def extended_asa_acl_remark_re(re_match: Match[str],
     remark = re_match.group(lastidx)
     yield MatchObj('remark', remark)
 
+def description_re(re_match: Match[str],
+                   lastidx: int) -> Iterable[MatchObj]:
+    """Match the description statement in an object"""
+    logging.debug("got DESCRIPTION_RE = %r", re_match.group(lastidx))
+    logging.debug('description = %r', re_match.group(lastidx + 1))
+    yield MatchObj('description', re_match.group(lastidx + 1))
+
 def yield_object_subnets(obj_key: str) -> Iterable[AddrBlock]:
     """Yield the subnets from the network object obj_key"""
     logging.debug('obj_key = %r', obj_key)
@@ -1057,6 +1071,7 @@ def subnet_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
 MATCH_RE_TABLE_RAW = {
     header_re: HEADER_RE,
     extended_asa_acl_remark_re: EXTENDED_ASA_ACL_REMARK_RE,
+    description_re: DESCRIPTION_RE,
     extended_acl_re: EXTENDED_ACL_RE,
     extended_asa_acl_re: EXTENDED_ASA_ACL_RE,
     net_or_grp_object_re: NET_OR_GRP_OBJECT_RE,
@@ -1201,11 +1216,13 @@ HeaderYield = Optional[Tuple[LineNum, Line]]
 RemarkYield = Optional[Tuple[LineNum, Line]]
 ACLNameYield = Optional[LineNum]
 ObjectNATYield = Optional[Tuple[LineNum, Line]]
+DescriptionYield = Optional[Tuple[LineNum, Line]]
 
 HeaderType = Generator[HeaderYield, CoroutineSend, None]
 RemarkType = Generator[RemarkYield, CoroutineSend, None]
 ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
 ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
+DescriptionType = Generator[DescriptionYield, CoroutineSend, None]
 
 class ParserState:
     """Contain the state for parsing a pair of PrefixRanges objects.
@@ -1234,25 +1251,28 @@ class ParserState:
         self._remark_gen = remark_coroutine()
         self._aclname_gen = aclname_coroutine()
         self._objectnat_gen = objectnat_coroutine()
+        self._description_gen = description_coroutine()
         assert next(self._header_gen) is None
         assert next(self._remark_gen) is None
         assert next(self._aclname_gen) is None
         assert next(self._objectnat_gen) is None
+        assert next(self._description_gen) is None
 
     def gen_send(self, matchobj: MatchObj, matched: bool, linenum: int,
                  line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield,
-                                     ObjectNATYield]:
+                                     ObjectNATYield, DescriptionYield]:
         """Send the same match object and other data to the generator
         objects that are part of the parser state."""
         logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
                       matchobj, matched, linenum, line)
         send_arg = (matchobj.matchtype, matchobj.obj, matched, linenum, line)
         ret_seq: Tuple[Union[HeaderYield, RemarkYield, ACLNameYield,
-                             ObjectNATYield], ...]
+                             ObjectNATYield, DescriptionYield], ...]
         ret_seq = (self._header_gen.send(send_arg),)
         ret_seq += (self._remark_gen.send(send_arg),)
         ret_seq += (self._aclname_gen.send(send_arg),)
         ret_seq += (self._objectnat_gen.send(send_arg),)
+        ret_seq += (self._description_gen.send(send_arg),)
         return ret_seq
 
 def header_coroutine() -> HeaderType:
@@ -1413,6 +1433,42 @@ def objectnat_coroutine() -> ObjectNATType:
         header_line = None
         yieldval = None
 
+def description_coroutine() -> DescriptionType:
+    """Receive match objects and other data from parse_config(), keep
+    state, and return data about any matched "description" statement."""
+
+    description = None
+    yieldval = None
+    got_match = None
+    while True:
+        logging.debug("yielding %r", yieldval)
+        # Yields either None or a tuple with the line number and line
+        matchtype, obj, matched, linenum, line = (yield yieldval)
+        logging.debug("matchtype = %r, obj = %r, matched = %r, "
+                      "linenum = %r, line = %r",
+                      matchtype, obj, matched, linenum, line)
+
+        if matchtype == 'description':
+            description = line
+            description_line = linenum
+        elif matchtype == 'srcdst' and matched:
+            got_match = True
+
+        # The description line can come before or after the match,
+        # so check that both have been received
+        if description and got_match:
+            yieldval = description_line, description
+            description = None
+            got_match = None
+            continue
+
+        logging.debug("line starts with space = %r", line.startswith(' '))
+        if not line.startswith(' '):
+            description = None
+            got_match = None
+
+        yieldval = None
+
 def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
     """Determine if a prefix range 'prefix' matches any of the subnets
     in the object named by 'objname'."""
@@ -1461,12 +1517,13 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
         matched = False
     logging.debug("matched = %r", matched)
 
-    (header_result, remark_result, acl_linenum,
-     objectnat) = parser.gen_send(matchobj, matched, linenum, line)
+    (header_result, remark_result, acl_linenum, objectnat,
+     description) = parser.gen_send(matchobj, matched, linenum, line)
     logging.debug('header_result = %r', header_result)
     logging.debug('remark_result = %r', remark_result)
     logging.debug('acl_linenum = %r', acl_linenum)
     logging.debug('objectnat = %r', objectnat)
+    logging.debug('description = %r', description)
 
     if remark_result:
         printline(remark_result[0], acl_linenum, remark_result[1], args)
@@ -1474,6 +1531,8 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
         printline(header_result[0], acl_linenum, header_result[1], args)
     if objectnat:
         printline(objectnat[0], acl_linenum, objectnat[1], args)
+    if description:
+        printline(description[0], acl_linenum, description[1], args)
     if matched:
         printline(linenum, acl_linenum, line, args)
 
