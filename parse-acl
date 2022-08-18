@@ -1316,18 +1316,18 @@ def header_coroutine() -> HeaderType:
 def remark_coroutine() -> RemarkType:
     """Receive match objects and other data from parse_config(),
     keep state, and return data about remarks to print."""
-    current_remark = None
     current_remark_line = None
     yieldval = None
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, _, linenum, _ = (yield yieldval)
+        matchtype, obj, matched, linenum, _ = (yield yieldval)
 
         if matchtype == 'remark':
             assert isinstance(obj, str)
             current_remark_line = linenum
             current_remark = obj
+            got_aclname = False
             logging.debug("current_remark_line is %r", current_remark_line)
             logging.debug("current_remark is %r", current_remark)
             yieldval = None
@@ -1335,14 +1335,15 @@ def remark_coroutine() -> RemarkType:
 
         if current_remark_line and linenum == current_remark_line + 1:
             # The requirement here is that a 'remark' match type
-            # is only good for 'acltype' on a line that immediately
+            # is only good for 'aclname' on a line that immediately
             # follows.  If that is met, then start yielding for any
             # 'srcdst' match types that are on the same line.
             if matchtype == 'aclname':
+                got_aclname = True
+                continue
+            if matchtype == 'srcdst' and got_aclname and matched:
                 logging.debug("set yieldval")
                 yieldval = current_remark_line, current_remark
-                continue
-            if matchtype == 'srcdst':
                 continue
 
         # None of the criteria met, so reset everything
@@ -1402,10 +1403,12 @@ def objectnat_coroutine() -> ObjectNATType:
         if matchtype == 'header' and matched:
             header_line = line
             header_linenum = linenum
-            yieldval = None
+            # There is a match, so print the header line
+            yieldval = header_linenum, header_line
             continue
         if matchtype == 'nat' and header_line:
-            yieldval = header_linenum, header_line
+            # Now print the NAT that corresponds to the original address
+            yieldval = linenum, line
             continue
         header_line = None
         yieldval = None
@@ -1428,40 +1431,36 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     the state objects held in the ParserState object, and prepares
     to print lines based on the yielded results."""
 
-    printit = not (args.objects or args.object)
+    if args.objects or args.object:
+        # If not printing anything, only send the info to the state machines
+        logging.debug('continue through loop for more networks')
+        parser.gen_send(matchobj, False, linenum, line)
+        return False
 
     srcmatch = parser.srcmatch
     dstmatch = parser.dstmatch
     logging.debug("srcmatch = %r, dstmatch = %r", srcmatch, dstmatch)
     matchtype, retval = matchobj
     logging.debug("matchtype = %r, retval = %r", matchtype, retval)
-    if matchtype not in ('srcdst', 'nat'):
+    if matchtype in ('srcdst', 'nat'):
+        # See if the src/dst from the config matches srcmatch/dstmatch
+        assert isinstance(retval, SrcDst)
+        src, dst = retval
+        logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
+                      src, srcmatch, dst, dstmatch)
+        matched = (match_subnet_prefixrange(src, srcmatch)
+                   and match_subnet_prefixrange(dst, dstmatch))
+    elif matchtype == 'header' and dstmatch.ge == 0:
         # Search the header for IP subnets that might match srcmatch,
         # but only if we are not searching for dstmatch also.
-        if matchtype == 'header' and dstmatch.ge == 0:
-            assert isinstance(retval, tuple)
-            _, objname = retval
-            assert isinstance(objname, str)
-            matched = prefixinobject(objname, srcmatch)
-        else:
-            matched = False
-        logging.debug("prefixinobject returned %r", matched)
-        parser.gen_send(matchobj, matched, linenum, line)
-        return False
-    assert isinstance(retval, SrcDst)
-    src, dst = retval
-    logging.debug('src = %r, srcmatch = %r, dst = %r, dstmatch = %r',
-                  src, srcmatch, dst, dstmatch)
+        assert isinstance(retval, tuple)
+        _, objname = retval
+        assert isinstance(objname, str)
+        matched = prefixinobject(objname, srcmatch)
+    else:
+        matched = False
+    logging.debug("matched = %r", matched)
 
-    if not printit:
-        logging.debug('continue through loop for more networks')
-        parser.gen_send(matchobj, False, linenum, line)
-        return False
-
-    # See if the src/dst from the config matches srcmatch/dstmatch
-    match_src = match_subnet_prefixrange(src, srcmatch)
-    match_dst = match_subnet_prefixrange(dst, dstmatch)
-    matched = match_src and match_dst
     (header_result, remark_result, acl_linenum,
      objectnat) = parser.gen_send(matchobj, matched, linenum, line)
     logging.debug('header_result = %r', header_result)
@@ -1469,22 +1468,18 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     logging.debug('acl_linenum = %r', acl_linenum)
     logging.debug('objectnat = %r', objectnat)
 
-    if not matched and not objectnat:
-        # No match this time, but iterate for more
-        logging.debug('no match')
-        return False
-
-    logging.debug('got match')
     if remark_result:
         printline(remark_result[0], acl_linenum, remark_result[1], args)
-    elif header_result:
+    if header_result:
         printline(header_result[0], acl_linenum, header_result[1], args)
-    elif objectnat:
+    if objectnat:
         printline(objectnat[0], acl_linenum, objectnat[1], args)
-    printline(linenum, acl_linenum, line, args)
-    # Return True, otherwise the same line can be printed more
-    # than once
-    return True
+    if matched:
+        printline(linenum, acl_linenum, line, args)
+
+    # Return True if a line matched, otherwise the same line can be
+    # printed more than once
+    return matched
 
 def iterparsers(parserlist: Collection[ParserState], matchobj: MatchObj,
                 args: argparse.Namespace, linenum: int, line: str) -> bool:
