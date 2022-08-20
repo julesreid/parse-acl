@@ -1353,22 +1353,26 @@ def remark_coroutine() -> RemarkType:
             yieldval = None
             continue
 
-        if current_remark_line and linenum == current_remark_line + 1:
-            # The requirement here is that a 'remark' match type
-            # is only good for 'aclname' on a line that immediately
-            # follows.  If that is met, then start yielding for any
-            # 'srcdst' match types that are on the same line.
-            if matchtype == 'aclname':
-                got_aclname = True
+        if current_remark_line:
+            if linenum == current_remark_line + 1:
+                # The requirement here is that a 'remark' match type
+                # is only good for 'aclname' on a line that immediately
+                # follows.  If that is met, then start yielding for any
+                # 'srcdst' match types that are on the same line.
+                if matchtype == 'aclname':
+                    got_aclname = True
+                    continue
+                if matchtype == 'srcdst' and got_aclname and matched:
+                    logging.debug("set yieldval")
+                    yieldval = current_remark_line, current_remark
+                    continue
                 continue
-            if matchtype == 'srcdst' and got_aclname and matched:
-                logging.debug("set yieldval")
-                yieldval = current_remark_line, current_remark
+            if linenum == current_remark_line:
                 continue
+            current_remark_line = None
 
         # None of the criteria met, so reset everything
         yieldval = None
-        current_remark_line = None
 
 def aclname_coroutine() -> ACLNameType:
     """Receive match objects and other data from parse_config(),
