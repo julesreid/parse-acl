@@ -92,13 +92,14 @@ class SrcDst(NamedTuple):
 # is the name of the object.  Other types are used for different things.
 #
 Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname',
-                    'nat', 'description']
+                    'nat', 'description', 'notfound']
 Line = str
 ObjName = str
 Object = Union[SrcDst,                          # srcdst, nat
                int,                             # position
                Tuple[Line, ObjName],            # header
-               str]                             # remark, aclname, description
+               str,                             # remark, aclname, description
+               None]                            # notfound
 
 class MatchObj(NamedTuple):
     """Generic return type from the matching functions"""
@@ -1589,10 +1590,18 @@ def parse_config(filedesc: TextIO,
     for linenum, line in enumerate(filedesc, start=1):
         line = line.rstrip('\r\n')
         logging.debug("linenum = %r, line = %r", linenum, line)
+        found_regex = False
         for matchobj in find_regex(match_re, line):
+            found_regex = True
             # If iterparsers returns True, it means a line was printed
             if iterparsers(parserlist, matchobj, args, linenum, line):
                 break
+        else:
+            if not found_regex:
+                # Not found but send since it might be the end of a section
+                for parser in parserlist:
+                    parser.gen_send(MatchObj('notfound', None), False,
+                                    linenum, line)
 
 def blockkey(block: AddrBlock) -> IPv4Network:
     """Provide key for sorting objects of type IPv4Network or Range"""
