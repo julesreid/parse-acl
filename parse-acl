@@ -748,7 +748,9 @@ Examples:
                               action='store_true',
                               dest='objects')
     parser.add_argument('-l', '--resolve',
-                        help='process fqdn statements by resolving DNS',
+                        help=('process fqdn statements by resolving DNS\n'
+                              '(if not set, substitute 0.0.0.1/32 instead,\n'
+                              'and if set, substitute 0.0.0.2/32 for errors)'),
                         action='store_true',
                         dest='resolver')
     parser.add_argument('-n', '--line-number',
@@ -975,11 +977,20 @@ def fqdn_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
         result = gethostbyname_ex(fqdn)
     except gaierror as err:
         logging.debug("got gaierror = %r", err)
+        yield MatchObj('srcdst', SrcDst(IPv4Network('0.0.0.2/32'), ANY))
         return
     logging.debug("result = %r", result)
     for ipaddrstr in result[2]:
         logging.debug("ipaddrstr = %r", ipaddrstr)
         yield MatchObj('srcdst', SrcDst(IPv4Network(ipaddrstr), ANY))
+
+def fqdn_re_no_lookup(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+    """Match the FQDN_RE regex but do not resolve address"""
+    logging.debug("got FQDN_RE = %r", re_match.group(lastidx))
+    fqdn = re_match.group(lastidx + 1)
+    logging.debug("fqdn = %r", fqdn)
+    # Return an address in "this network" to substitute for the unresolved FQDN
+    yield MatchObj('srcdst', SrcDst(IPv4Network('0.0.0.1/32'), ANY))
 
 def range_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the RANGE_RE regex"""
@@ -1145,22 +1156,19 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
         else:
             return
 
-def compile_match_re(args: argparse.Namespace) -> Pattern[str]:
+def compile_match_re() -> Pattern[str]:
     """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
-    If the resolve flag is set, allow matching fqdn statements.
     See the Python documentation for writing a tokenizer to see how
     this is put together.
 
     https://docs.python.org/3/library/re.html#writing-a-tokenizer
     """
-    assert isinstance(args.resolver, bool)
 
     # The function names and regexes from MATCH_RE_TABLE_RAW are
     # converted into named groups and combined into a single, master
     # regular expression that combines all of the regular expressions.
     match_re_str = '|'.join('(?P<%s>%s)' % (re_func.__name__, re_value)
-                            for re_func, re_value in MATCH_RE_TABLE_RAW.items()
-                            if re_func.__name__ != "fqdn_re" or args.resolver)
+                            for re_func, re_value in MATCH_RE_TABLE_RAW.items())
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
@@ -1617,7 +1625,11 @@ def prepare_regexes(args: argparse.Namespace) -> Pattern[str]:
     for key in MATCH_RE_TABLE_RAW:
         MATCH_FUNCS[key.__name__] = key
 
-    return compile_match_re(args=args)
+    # As a special case, replace the default FQDN parser if no -l option
+    if not args.resolver:
+        MATCH_FUNCS['fqdn_re'] = fqdn_re_no_lookup
+
+    return compile_match_re()
 
 ### Main program
 
