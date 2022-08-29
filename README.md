@@ -94,13 +94,13 @@ results.
 DNS lookups for ```fqdn``` statements are disabled by default so
 that the running of the command is not dependent on the network.
 They can be enabled using ```-l```.  If not set, the address 0.0.0.1/32
-substituted instead of the actual IP address or addresses of the FQDN.
+is substituted instead of the actual IP address or addresses of the FQDN.
 If the resolver got an error (non-existent domain, server failure,
 etc.), the address 0.0.0.2/32 is substituted.
 
 ## Requirements
 
-- Python 3.8
+- Python 3.8 or later
 - Bourne shell (to run tests)
 
 ## Examples
