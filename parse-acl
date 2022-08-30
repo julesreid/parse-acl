@@ -91,8 +91,8 @@ class SrcDst(NamedTuple):
 # where the first string is the entire line, and the second string
 # is the name of the object.  Other types are used for different things.
 #
-Matchtype = Literal['srcdst', 'position', 'header', 'remark', 'aclname',
-                    'nat', 'description', 'notfound']
+ObjType = Literal['srcdst', 'position', 'header', 'remark', 'aclname',
+                  'nat', 'description', 'notfound']
 Line = str
 ObjName = str
 Object = Union[SrcDst,                          # srcdst, nat
@@ -103,7 +103,7 @@ Object = Union[SrcDst,                          # srcdst, nat
 
 class MatchObj(NamedTuple):
     """Generic return type from the matching functions"""
-    matchtype: Matchtype
+    objtype: ObjType
     obj: Object
 
 ### Network objects
@@ -1146,7 +1146,7 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterable[MatchObj]:
         logging.debug('finditer with pos = %r', startpos)
         n = match_re.finditer(line, pos=startpos)
         for result in processgroups(n):
-            if result.matchtype == 'position':
+            if result.objtype == 'position':
                 assert isinstance(result.obj, int)
                 startpos = result.obj
                 logging.debug('startpos is %r', startpos)
@@ -1219,7 +1219,7 @@ def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
 ### State machines
 
 LineNum = int
-CoroutineSend = Tuple[Matchtype, Object, bool, LineNum, Line]
+CoroutineSend = Tuple[ObjType, Object, bool, LineNum, Line]
 
 HeaderYield = Optional[Tuple[LineNum, Line]]
 RemarkYield = Optional[Tuple[LineNum, Line]]
@@ -1274,7 +1274,7 @@ class ParserState:
         objects that are part of the parser state."""
         logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
                       matchobj, matched, linenum, line)
-        send_arg = (matchobj.matchtype, matchobj.obj, matched, linenum, line)
+        send_arg = (matchobj.objtype, matchobj.obj, matched, linenum, line)
         ret_seq: Tuple[Union[HeaderYield, RemarkYield, ACLNameYield,
                              ObjectNATYield, DescriptionYield], ...]
         ret_seq = (self._header_gen.send(send_arg),)
@@ -1293,8 +1293,8 @@ def header_coroutine() -> HeaderType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, matched, linenum, line = (yield yieldval)
-        if matchtype == 'header':
+        objtype, obj, matched, linenum, line = (yield yieldval)
+        if objtype == 'header':
             assert isinstance(obj, tuple)
             # line_val is entire line, obj_val is object name
             line_val, obj_val = obj
@@ -1311,7 +1311,7 @@ def header_coroutine() -> HeaderType:
             yieldval = None
             continue
 
-        if matchtype not in ('srcdst', 'nat'):
+        if objtype not in ('srcdst', 'nat'):
             yieldval = None
             continue
 
@@ -1328,7 +1328,7 @@ def header_coroutine() -> HeaderType:
 
         logging.debug('header_line = %r', header_line)
         # Do not include 'nat' subnets in the object
-        if header_line is not None and matchtype != 'nat':
+        if header_line is not None and objtype != 'nat':
             logging.debug('saving header_obj %r with %r', header_obj, obj.src)
             # Save the src (address of object) using the object name
             OBJECT_DICT[header_obj].add(obj.src)
@@ -1350,9 +1350,9 @@ def remark_coroutine() -> RemarkType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, matched, linenum, _ = (yield yieldval)
+        objtype, obj, matched, linenum, _ = (yield yieldval)
 
-        if matchtype == 'remark':
+        if objtype == 'remark':
             assert isinstance(obj, str)
             current_remark_line = linenum
             current_remark = obj
@@ -1368,10 +1368,10 @@ def remark_coroutine() -> RemarkType:
                 # is only good for 'aclname' on a line that immediately
                 # follows.  If that is met, then start yielding for any
                 # 'srcdst' match types that are on the same line.
-                if matchtype == 'aclname':
+                if objtype == 'aclname':
                     got_aclname = True
                     continue
-                if matchtype == 'srcdst' and got_aclname and matched:
+                if objtype == 'srcdst' and got_aclname and matched:
                     logging.debug("set yieldval")
                     yieldval = current_remark_line, current_remark
                     continue
@@ -1393,15 +1393,15 @@ def aclname_coroutine() -> ACLNameType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a line number
-        matchtype, obj, _, linenum, _ = (yield yieldval)
+        objtype, obj, _, linenum, _ = (yield yieldval)
 
         # Each new line resets aclname in case it is not an ACL.
-        # If it is, aclname will get set again from matchtype 'aclname'.
+        # If it is, aclname will get set again from objtype 'aclname'.
         if linenum != last_linenum:
             aclname = None
             last_linenum = linenum
 
-        if matchtype == 'aclname':
+        if objtype == 'aclname':
             assert isinstance(obj, str)
             aclname = obj
             logging.debug("aclname is %r", aclname)
@@ -1429,17 +1429,17 @@ def objectnat_coroutine() -> ObjectNATType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, matched, linenum, line = (yield yieldval)
-        logging.debug("matchtype = %r, obj = %r, matched = %r, "
+        objtype, obj, matched, linenum, line = (yield yieldval)
+        logging.debug("objtype = %r, obj = %r, matched = %r, "
                       "linenum = %r, line = %r",
-                      matchtype, obj, matched, linenum, line)
-        if matchtype == 'header' and matched:
+                      objtype, obj, matched, linenum, line)
+        if objtype == 'header' and matched:
             header_line = line
             header_linenum = linenum
             # There is a match, so print the header line
             yieldval = header_linenum, header_line
             continue
-        if matchtype == 'nat' and header_line:
+        if objtype == 'nat' and header_line:
             # Now print the NAT that corresponds to the original address
             yieldval = linenum, line
             continue
@@ -1456,15 +1456,15 @@ def description_coroutine() -> DescriptionType:
     while True:
         logging.debug("yielding %r", yieldval)
         # Yields either None or a tuple with the line number and line
-        matchtype, obj, matched, linenum, line = (yield yieldval)
-        logging.debug("matchtype = %r, obj = %r, matched = %r, "
+        objtype, obj, matched, linenum, line = (yield yieldval)
+        logging.debug("objtype = %r, obj = %r, matched = %r, "
                       "linenum = %r, line = %r",
-                      matchtype, obj, matched, linenum, line)
+                      objtype, obj, matched, linenum, line)
 
-        if matchtype == 'description':
+        if objtype == 'description':
             description = line
             description_line = linenum
-        elif matchtype == 'srcdst' and matched:
+        elif objtype == 'srcdst' and matched:
             got_match = True
 
         # The description line can come before or after the match,
@@ -1509,9 +1509,9 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     srcmatch = parser.srcmatch
     dstmatch = parser.dstmatch
     logging.debug("srcmatch = %r, dstmatch = %r", srcmatch, dstmatch)
-    matchtype, retval = matchobj
-    logging.debug("matchtype = %r, retval = %r", matchtype, retval)
-    if matchtype in ('srcdst', 'nat'):
+    objtype, retval = matchobj
+    logging.debug("objtype = %r, retval = %r", objtype, retval)
+    if objtype in ('srcdst', 'nat'):
         # See if the src/dst from the config matches srcmatch/dstmatch
         assert isinstance(retval, SrcDst)
         src, dst = retval
@@ -1519,7 +1519,7 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
                       src, srcmatch, dst, dstmatch)
         matched = (match_subnet_prefixrange(src, srcmatch)
                    and match_subnet_prefixrange(dst, dstmatch))
-    elif matchtype == 'header' and dstmatch.ge == 0:
+    elif objtype == 'header' and dstmatch.ge == 0:
         # Search the header for IP subnets that might match srcmatch,
         # but only if we are not searching for dstmatch also.
         assert isinstance(retval, tuple)
