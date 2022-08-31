@@ -12,8 +12,7 @@ Any text that looks like an IP address or subnet is tested to see if it matches.
 If it is part of an object, the name of the object is recorded so that it can be shown.  Objects
 and standard access lists
 are matched by the source prefix range only, and extended access lists are shown only
-if both the source and destination prefix ranges match
-(this can be changed to match either with the ```--or``` option).
+if both the source and destination prefix ranges match.
 If not specified, the source and destination prefix ranges default to ```0.0.0.0/0 le 32```,
 which matches any subnet.  Protocols such as ```icmp``` are ignored, as are ```udp```
 and ```tcp``` port numbers.  The program is only concerned with layer 3 IPv4 addresses.
@@ -50,8 +49,8 @@ in the statement as a host address (that is, ```1.2.3.4/32```).
 | Option | Description |
 | ------ | ----------- |
 | ```-h```, ```--help``` |           show this help message and exit |
-| ```-s``` *SOURCE*, ```--source``` *SOURCE* | source prefix range to match in configuration |
-| ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* |                        destination prefix range to match in configuration
+| ```-s``` *SOURCE*, ```--source``` *SOURCE* | source to match in configuration |
+| ```-d``` *DESTINATION*, ```--destination``` *DESTINATION* | destination to match in configuration |
 |  ```-x```, ```--swap``` |        swap the source and destinaton addresses (for convenience) |
 |  ```-p```, ```--transpose``` |      add another matching sequence with the source and destination addresses swapped |
 | ```-v```, ```--verbose``` |        be verbose |
@@ -61,6 +60,7 @@ in the statement as a host address (that is, ```1.2.3.4/32```).
 |  ```-n```, ```--line-number``` |    prefix each line of output with the 1-based line number within its input file |
 |  ```-a```, ```--acl-lines```   |    prefix ACLs with the 1-based line number |
 
+The source or destination can either be a prefix range or a keyword.
 A prefix range consists of an IP address (with an optional prefix
 length indicating a subnet), and two optional keywords that specify
 the minimum and maximum prefix lengths for matches.
@@ -98,6 +98,12 @@ is substituted instead of the actual IP address or addresses of the FQDN.
 If the resolver got an error (non-existent domain, server failure,
 etc.), the address 0.0.0.2/32 is substituted.
 
+A keyword represent classes of IP addresses such as global or private
+RFC 1918 addresses.  The keywords are based on attributes from the
+Python ipaddress module.  The complete list is: ```multicast```,
+```private```, ```global```, ```unspecified```, ```reserved```,
+```loopback```, and ```link_local```.
+
 ## Requirements
 
 - Python 3.8 or later
@@ -118,3 +124,18 @@ etc.), the address 0.0.0.2/32 is substituted.
 | ```1.1.0.0/16 ge 1```         | Look for any supernets of a subnet except the default route |
 | ```1.1.1.0/24 ge 1 le 32```   | Look for any subnets or supernets of a subnet except the default route |
 | ```1.1.1.0/24 ge 32 le 32```  | Look for host IP addresses in a subnet |
+
+### Command line examples
+
+| Command line | Which matches... |
+| --- | --- |
+| ```parse-acl``` | All IP addresses and subnets |
+| ```parse-acl -s 192.0.2.1``` | A single IP address in the source |
+| ```parse-acl -s '192.0.2.0/24 le 32'``` | All addresses from a single subnet |
+| ```parse-acl -p -s 192.0.2.1``` | Any mention of a single IP address in source or destination |
+| ```parse-acl -p -s 192.0.2.1,192.0.2.2``` | Any mention of two IP addresses |
+| ```parse-acl -p -s 192.0.2.1 -d 203.0.113.100``` | ACLs between two specific IP addresses (bidirectional) |
+| ```parse-acl -s private -d global``` | ACLs from private to global IP addresses (but not vice versa) |
+| ```parse-acl -p -s private -d global``` | ACLs from private to global IP addresses (bidirectional) |
+| ```parse-acl -o DNS_servers``` | IP addresses in a single object |
+| ```parse-acl -O``` | IP addresses in all objects |

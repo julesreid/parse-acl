@@ -48,8 +48,8 @@ class IPv4Network(IPv4Network_orig):
         return retval
 
 # List of keywords that represent attributes from IPv4Network objects
-keyword_list = set(['shared', 'global', 'link_local', 'loopback',
-                    'multicast', 'private', 'reserved', 'unspecified'])
+keyword_list = set(['global', 'link_local', 'loopback', 'multicast',
+                    'private', 'reserved', 'unspecified'])
 Keyword = str
 
 # Set some types used for holding data
@@ -724,6 +724,7 @@ def getoptions() -> argparse.Namespace:
                     'router or firewall',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
+The source or destination can either be a prefix range or a keyword.
 A prefix range consists of an IP address (with an optional prefix
 length indicating a subnet), and two optional keywords that specify
 the minimum and maximum prefix lengths for matches.
@@ -732,6 +733,11 @@ the minimum and maximum prefix lengths for matches.
 
 The prefix length must be 0 <= length <= 32, and the ge and le
 arguments must be 0 <= ge <= le <= 32.
+
+A keyword represent classes of IP addresses such as global or private
+RFC 1918 addresses.  The keywords are based on attributes from the
+Python ipaddress module.  The complete list is: multicast, private,
+global, unspecified, reserved, loopback, and link_local.
 
 Examples:
 
@@ -743,17 +749,17 @@ Examples:
                         and also any supernets except the default route
 1.1.1.0/16 ge 0         Look for any supernets of a subnet including
                         the default route
+private                 Look for private RFC 1918 addresses
 ''')
 
     parser.add_argument('-s', '--source',
-                        help='source prefix range to match in configuration',
+                        help='source to match in configuration',
                         # Match anything by default
                         default=(PrefixRange(ANY, ge=0, le=32),),
                         action=PrefixRangeAction,
                         metavar='SOURCE')
     parser.add_argument('-d', '--destination',
-                        help='destination prefix range to match in '
-                             'configuration',
+                        help='destination to match in configuration',
                         # Match anything by default
                         default=(PrefixRange(ANY, ge=0, le=32),),
                         action=PrefixRangeAction,
