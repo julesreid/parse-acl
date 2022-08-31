@@ -47,6 +47,11 @@ class IPv4Network(IPv4Network_orig):
             return retval[:-3]
         return retval
 
+# List of keywords that represent attributes from IPv4Network objects
+keyword_list = set(['shared', 'global', 'link_local', 'loopback',
+                    'multicast', 'private', 'reserved', 'unspecified'])
+Keyword = str
+
 # Set some types used for holding data
 #
 # For use when 3.9 is available
@@ -68,6 +73,10 @@ class PrefixRange(NamedTuple):
             result += f' le {self.le}'
         result += '>'
         return result
+
+# A match string specified on the command line can either be a keyword
+# or a prefix range (abbreviated to an IP address in the simplest case)
+MatchType = Union[Keyword, PrefixRange]
 
 class Range(NamedTuple):
     """Represent a range of IP addresses"""
@@ -155,6 +164,12 @@ PREFIX_RE = r'''
     (?: \s+ ge \s+ (\d+) )?
     (?: \s+ le \s+ (\d+) )?
     $
+'''
+
+KEYWORD_RE = r'''
+    \b
+    (?:''' + '|'.join(keyword for keyword in keyword_list) + r''')
+    \b
 '''
 
 # $1 = object name
@@ -508,13 +523,31 @@ def matches_exact(subnet1: IPv4Network, subnet2: IPv4Network) -> bool:
     and prefix length"""
     return match_subnet(subnet1, subnet2, subnet2.prefixlen, subnet2.prefixlen)
 
-def match_range(candidate_range: Range, prefix: PrefixRange) -> bool:
+def match_keyword(subnet: Union[IPv4Network, IPv4Address],
+                  keyword: Keyword) -> bool:
+    """Return the result of using IPv4Network's attributes for a subnet"""
+    retval = getattr(subnet, 'is_' + keyword, None)
+    if retval is None:
+        assert False, "shouldn't happen"
+    assert isinstance(retval, bool)
+    return retval
+
+def match_range_keyword(candidate_range: Range, prefix: Keyword) -> bool:
+    """Match a range with a match keyword.  Return true as long as
+    the start and end addresses match the keyword."""
+    candidate_start, candidate_end = candidate_range
+    return (match_keyword(candidate_start, prefix)
+            and match_keyword(candidate_end, prefix))
+
+def match_range(candidate_range: Range, prefix: MatchType) -> bool:
     """Match a range of addresses against the search prefix.  This is
     equivalent to searching a bunch of host addresses individually.
     Therefore, the match is only considered if the prefix allows
     host addresses.  If so, look for any overlap of the prefix with
     the range."""
 
+    if isinstance(prefix, Keyword):
+        return match_range_keyword(candidate_range, prefix)
     # Only match if the match includes host addresses
     if prefix.le != 32:
         return False
@@ -535,11 +568,13 @@ def match_range(candidate_range: Range, prefix: PrefixRange) -> bool:
     # What is left is an overlap
     return True
 
-def match_subnet_prefixrange(subnet: AddrBlock, prefix: PrefixRange) -> bool:
+def match_subnet_prefixrange(subnet: AddrBlock, prefix: MatchType) -> bool:
     """Test if subnet falls within the subset or superset given
     by the prefix range prefix"""
     if isinstance(subnet, Range):
         return match_range(subnet, prefix)
+    if isinstance(prefix, Keyword):
+        return match_keyword(subnet, prefix)
     return match_subnet(subnet, prefix.subnet, prefix.ge, prefix.le)
 
 ### Option handling
@@ -608,12 +643,15 @@ def safe_int(intstr: Optional[str]) -> Optional[int]:
         return None
     return int(intstr)
 
-def parse_prefix_list(arg: str) -> PrefixRange:
-    """Given the string representation of a prefix range, convert it
-    to a PrefixRange object"""
+def parse_prefix_list(arg: str) -> MatchType:
+    """Given the string representation of a prefix range or keyword,
+    convert it to a MatchType object"""
     re_match = re.match(PREFIX_RE, arg, re.X)
     if not re_match:
-        raise SyntaxError('invalid prefix range')
+        re_match = re.match(KEYWORD_RE, arg, re.X)
+        if not re_match:
+            raise SyntaxError('invalid match string')
+        return re_match.group(0)
     ip = re_match.group(1)
     length = re_match.group(2)
     if length is not None:
@@ -673,7 +711,7 @@ class PrefixRangeAction(argparse.Action):
                  option_string: Optional[str] = None) -> None:
         """Set the PrefixLength argument"""
         assert isinstance(values, str)
-        srcmatchlist: Collection[PrefixRange]
+        srcmatchlist: Collection[MatchType]
         srcmatchlist = tuple(parse_prefix_list(prefix_list)
                              for prefix_list in values.split(','))
         setattr(namespace, self.dest, srcmatchlist)
@@ -1242,7 +1280,7 @@ class ParserState:
     range overwrites the state used by another range and the right
     lines are not output."""
 
-    def __init__(self, srcmatch: PrefixRange, dstmatch: PrefixRange) -> None:
+    def __init__(self, srcmatch: MatchType, dstmatch: MatchType) -> None:
         self.srcmatch = srcmatch
         self.dstmatch = dstmatch
         self._gen_init()
@@ -1482,7 +1520,7 @@ def description_coroutine() -> DescriptionType:
 
         yieldval = None
 
-def prefixinobject(objname: str, prefix: PrefixRange) -> bool:
+def prefixinobject(objname: str, prefix: MatchType) -> bool:
     """Determine if a prefix range 'prefix' matches any of the subnets
     in the object named by 'objname'."""
     logging.debug("objname = %r, prefix = %r", objname, prefix)
@@ -1519,7 +1557,8 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
                       src, srcmatch, dst, dstmatch)
         matched = (match_subnet_prefixrange(src, srcmatch)
                    and match_subnet_prefixrange(dst, dstmatch))
-    elif objtype == 'header' and dstmatch.ge == 0:
+    elif (objtype == 'header' and not isinstance(dstmatch, Keyword)
+          and dstmatch.ge == 0):
         # Search the header for IP subnets that might match srcmatch,
         # but only if we are not searching for dstmatch also.
         assert isinstance(retval, tuple)
@@ -1565,8 +1604,8 @@ def iterparsers(parserlist: Collection[ParserState], matchobj: MatchObj,
             return True
     return False
 
-def create_parse_list(srcmatchlist: Collection[PrefixRange],
-                      dstmatchlist: Collection[PrefixRange],
+def create_parse_list(srcmatchlist: Collection[MatchType],
+                      dstmatchlist: Collection[MatchType],
                       args: argparse.Namespace) -> Collection[ParserState]:
     """Create the parser list by creating an instance of the
     ParserState class for each permutation of source and destination
@@ -1584,8 +1623,8 @@ def create_parse_list(srcmatchlist: Collection[PrefixRange],
     return retval
 
 def parse_config(filedesc: TextIO,
-                 srcmatchlist: Collection[PrefixRange],
-                 dstmatchlist: Collection[PrefixRange], /,
+                 srcmatchlist: Collection[MatchType],
+                 dstmatchlist: Collection[MatchType], /,
                  match_re: Pattern[str],
                  args: argparse.Namespace) -> None:
     """Given a file descriptor and a collection of source and
@@ -1642,8 +1681,8 @@ def main() -> None:
 
     assert isinstance(args.source, tuple)
     assert isinstance(args.destination, tuple)
-    #for pr in args.source: assert isinstance(pr, PrefixRange)
-    #for pr in args.destination: assert isinstance(pr, PrefixRange)
+    #for pr in args.source: assert isinstance(pr, MatchType)
+    #for pr in args.destination: assert isinstance(pr, MatchType)
     srcmatch = args.source
     dstmatch = args.destination
 
