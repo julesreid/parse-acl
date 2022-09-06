@@ -1,13 +1,17 @@
 #!/bin/sh
 
 PYTHON=python
+PARSEACL=../parse-acl
 
 $PYTHON -V > /dev/null 2>&1 || { echo "$PYTHON not found "; exit 1; }
 
-cat matchip-tests | grep '^[^#]' | while IFS=$'\t' read m n
+i=0
+cat matchip-tests.in | grep '^[^#]' | while IFS=$'\t' read m n
 do
+    i=$((i+1))
+    echo -n Test $i...
     result=$(
-	$PYTHON parse-acl -t $m |
+	$PYTHON $PARSEACL -t $m |
 	    awk '/match_subnet/ { print $2 }' |
 	    sed -e 's/False/no/' -e 's/True/yes/'
     )
@@ -15,6 +19,7 @@ do
     then
 	printf "%-30s  %s\n" "$m" "$n"
     fi
+    echo OK
 done
 
 exit 0
