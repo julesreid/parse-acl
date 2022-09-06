@@ -1,0 +1,47 @@
+#!/bin/sh
+
+PARSEACL=../parse-acl
+
+echo -n Test 1...
+cat <<EOF > x-result-test
+EOF
+$PARSEACL -s 1.1.1.1 description-1  > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 2...
+cat <<EOF > x-result-test
+object-group network net_object1
+ network-object host 10.11.12.13
+EOF
+$PARSEACL -s 10.11.12.13 description-1  > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 3...
+cat <<EOF > x-result-test
+object-group network net_object2
+ description This should print
+ network-object host 10.11.12.14
+EOF
+$PARSEACL -s 10.11.12.14 description-1 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 4...
+cat <<EOF > x-result-test
+object-group network net_object1
+ network-object host 10.11.12.13
+object-group network net_object2
+ description This should print
+ network-object host 10.11.12.14
+EOF
+$PARSEACL description-1 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+exit 0

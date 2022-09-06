@@ -1,0 +1,8 @@
+object-group network net_object1
+ network-object host 10.11.12.13
+object-group service service_object1 tcp
+ description This should NOT print
+ port-object eq 443
+object-group network net_object2
+ description This should print
+ network-object host 10.11.12.14
