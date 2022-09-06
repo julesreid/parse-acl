@@ -1,0 +1,41 @@
+#!/bin/sh
+
+PARSEACL=../parse-acl
+
+echo -n Test 1...
+cat <<EOF > x-result-test
+! network-object host 10.1.1.1
+object network Branch_B
+ network-object host 10.2.2.2
+../parse-acl: Network object Branch_A not found -- possibly corrupt configuration?
+Use -h to see help.
+EOF
+$PARSEACL corrupt_a.txt > y-result-test 2>&1
+status=$?
+if [ $status -ne 1 ]; then
+    echo "status is $status, not 1"
+    exit 1
+fi
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 2...
+cat <<EOF > x-result-test
+object network Branch_A
+ network-object host 10.1.1.1
+! network-object host 10.2.2.2
+../parse-acl: Network object Branch_B not found -- possibly corrupt configuration?
+Use -h to see help.
+EOF
+$PARSEACL corrupt_b.txt > y-result-test 2>&1
+status=$?
+if [ $status -ne 1 ]; then
+    echo "status is $status, not 1"
+    exit 1
+fi
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+exit 0

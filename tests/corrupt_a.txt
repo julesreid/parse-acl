@@ -1,0 +1,7 @@
+! Make a reference to an object which isn't defined (Branch_B)
+!object network Branch_A
+! network-object host 10.1.1.1
+object network Branch_B
+ network-object host 10.2.2.2
+!
+access-list inside_in extended permit ip object Branch_A object Branch_B
