@@ -1,0 +1,117 @@
+#!/bin/sh
+
+PARSEACL=../parse-acl
+
+echo -n Test 1...
+cat <<EOF > x-result-test
+EOF
+$PARSEACL -s 1.1.1.1 remark-2  > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 2...
+cat <<EOF > x-result-test
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL remark-2 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 3...
+cat <<EOF > x-result-test
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL -s 10.4.4.4 remark-2 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 4...
+cat <<EOF > x-result-test
+EOF
+$PARSEACL -s 1.1.1.1 remark-3 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 5...
+cat <<EOF > x-result-test
+access-list INSIDE_IN remark This is a comment
+access-list INSIDE_IN extended permit ip host 10.1.1.1 host 10.2.2.2
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL remark-3 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 6...
+cat <<EOF > x-result-test
+access-list INSIDE_IN remark This is a comment
+access-list INSIDE_IN extended permit ip host 10.1.1.1 host 10.2.2.2
+EOF
+$PARSEACL -s 10.1.1.1 remark-3 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 7...
+cat <<EOF > x-result-test
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL -s 10.4.4.4 remark-3 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 8...
+cat <<EOF > x-result-test
+EOF
+$PARSEACL -s 1.1.1.1 remark-4 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 9...
+cat <<EOF > x-result-test
+access-list INSIDE_IN remark This is a comment
+access-list INSIDE_IN extended permit ip host 10.1.1.1 host 10.2.2.2
+access-list INSIDE_IN extended permit ip host 10.3.3.3 host 10.4.4.4
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL remark-4 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 10...
+cat <<EOF > x-result-test
+access-list INSIDE_IN remark This is a comment
+access-list INSIDE_IN extended permit ip host 10.1.1.1 host 10.2.2.2
+EOF
+$PARSEACL -s 10.1.1.1 remark-4 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 11...
+cat <<EOF > x-result-test
+access-list INSIDE_IN extended permit ip host 10.3.3.3 host 10.4.4.4
+EOF
+$PARSEACL -s 10.3.3.3 remark-4 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 12...
+cat <<EOF > x-result-test
+http 10.4.4.4 255.255.255.255 INSIDE
+EOF
+$PARSEACL -s 10.4.4.4 remark-4 > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+exit 0

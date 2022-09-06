@@ -1,0 +1,4 @@
+access-list INSIDE_IN remark This is a comment
+access-list INSIDE_IN extended permit ip host 10.1.1.1 host 10.2.2.2
+access-list INSIDE_IN extended permit ip host 10.3.3.3 host 10.4.4.4
+http 10.4.4.4 255.255.255.255 INSIDE
