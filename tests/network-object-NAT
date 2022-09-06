@@ -1,0 +1,6 @@
+object network OriginalAddress
+ host 10.1.2.3
+object network TranslatedAddress
+ host 192.0.2.3
+object network OriginalAddress
+ nat (inside,outside) static TranslatedAddress

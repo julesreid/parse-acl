@@ -1,0 +1,53 @@
+#!/bin/sh
+
+PARSEACL=../parse-acl
+
+#trap "rm -f /tmp/x1 /tmp/x2 /tmp/x3 /tmp/x4" 0
+
+echo -n Test 1...
+cat <<EOF > x-result-test
+EOF
+$PARSEACL -s 1.1.1.1 network-object-NAT  > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 2...
+cat <<EOF > x-result-test
+object network OriginalAddress
+ host 10.1.2.3
+object network TranslatedAddress
+ host 192.0.2.3
+object network OriginalAddress
+ nat (inside,outside) static TranslatedAddress
+EOF
+$PARSEACL network-object-NAT > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 3...
+cat <<EOF > x-result-test
+object network OriginalAddress
+ host 10.1.2.3
+object network OriginalAddress
+ nat (inside,outside) static TranslatedAddress
+EOF
+$PARSEACL -s 10.1.2.3 network-object-NAT > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 4...
+cat <<EOF > x-result-test
+object network TranslatedAddress
+ host 192.0.2.3
+object network OriginalAddress
+ nat (inside,outside) static TranslatedAddress
+EOF
+$PARSEACL -s 192.0.2.3 network-object-NAT > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+exit 0
