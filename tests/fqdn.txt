@@ -1,0 +1,107 @@
+object network YouTube
+ description YouTube
+ fqdn v4 youtube.com
+!
+object network Facebook
+ description Facebook
+ fqdn v4 facebook.com
+!
+object network Wikipedia
+ description Wikipedia
+ fqdn v4 en.wikipedia.org
+!
+object network Wikipedia
+ description Wikipedia
+ fqdn v4 wikipedia.org
+!
+object network Twitter
+ description Twitter
+ fqdn v4 twitter.com
+!
+object network Amazon
+ description Amazon
+ fqdn v4 amazon.com
+!
+object network Google
+ description Google
+ fqdn v4 google.com
+!
+object network Instagram
+ description Instagram
+ fqdn v4 instagram.com
+!
+object network Pinterest
+ description Pinterest
+ fqdn v4 www.pinterest.com
+!
+object network Live_com
+ description Live.com
+ fqdn v4 outlook.live.com
+!
+object network IMDB
+ description IMDB
+ fqdn v4 imdb.com
+!
+object network Fandom
+ description Fandom
+ fqdn v4 www.fandom.com
+!
+object network Reddit
+ description Reddit
+ fqdn v4 www.reddit.com
+!
+object network Apple
+ description Apple
+ fqdn v4 apple.com
+!
+object network Netflix
+ description Netflix
+ fqdn v4 netflix.com
+!
+object network MSN
+ description MSN
+ fqdn v4 www.msn.com
+!
+object network Invalid
+ description Invalid domain which always returns NXDOMAIN (RFC 6761)
+ fqdn invalid.
+!
+object network akamaiedge.net
+ description Returns NOERROR, but no IP address
+ fqdn akamaiedge.net
+!
+object network microsoft.com
+ fqdn microsoft.com
+!
+object network amazonaws.com
+ fqdn amazonaws.com
+!
+object network gtld-servers.net
+ description Returns NOERROR, but no IP address
+ fqdn gtld-servers.net
+!
+object network akamai.net
+ description Returns NOERROR, but no IP address
+ fqdn akamai.net
+!
+object network baidu.com
+ fqdn baidu.com
+!
+object network linkedin.com
+ fqdn linkedin.com
+!
+object network a-msedge.net
+ description Returns NOERROR, but no IP address
+ fqdn a-msedge.net
+!
+object network cloudflare.com
+ fqdn cloudflare.com
+!
+object network yahoo.com
+ fqdn yahoo.com
+!
+object network akadns.net
+ description Returns NOERROR, but no IP address
+ fqdn akadns.net
+!
+end
