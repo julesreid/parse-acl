@@ -1,0 +1,32 @@
+#!/bin/sh
+
+# Test matching multiple prefix ranges simultaneously.
+#
+# 192.168.0.0/24 le 32
+# 172.16.55.30
+# 10.0.0.0/16 le 32
+# 1.0.0.0/8 le 32
+
+PARSEACL=../parse-acl
+CONFIG=combine-1
+
+# Derivation using parse-acl
+
+$PARSEACL -n -p -s '172.16.0.0/12 le 32,192.168.0.0/16 le 32,10.0.0.0/8 le 32,1.0.0.0/8 le 32' $CONFIG 2>&1 > x-result-test
+
+trap "rm -f /tmp/x1 /tmp/x2 /tmp/x3 /tmp/x4" 0 1 2 15
+
+# Derivation from handling each prefix range separately then merging
+
+echo -n Test 1...
+
+$PARSEACL -n -p -s '172.16.0.0/12 le 32' $CONFIG 2>&1 > /tmp/x1
+$PARSEACL -n -p -s '192.168.0.0/16 le 32' $CONFIG 2>&1 > /tmp/x2
+$PARSEACL -n -p -s '10.0.0.0/8 le 32' $CONFIG 2>&1 > /tmp/x3
+$PARSEACL -n -p -s '1.0.0.0/8 le 32' $CONFIG 2>&1 > /tmp/x4
+
+sort -t $'\t' -u -k 1,1 /tmp/x1 /tmp/x2 /tmp/x3 /tmp/x4 > y-result-test
+
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
