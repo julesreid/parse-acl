@@ -12,7 +12,7 @@ CONFIG=combine-1
 
 # Derivation using parse-acl
 
-$PARSEACL -n -p -s '172.16.0.0/12 le 32,192.168.0.0/16 le 32,10.0.0.0/8 le 32,1.0.0.0/8 le 32' $CONFIG 2>&1 > x-result-test
+$PARSEACL -n -p -s '172.16.0.0/12 le 32, 192.168.0.0/16 le 32, 10.0.0.0/8 le 32, 1.0.0.0/8 le 32' $CONFIG 2>&1 > x-result-test
 
 trap "rm -f /tmp/x1 /tmp/x2 /tmp/x3 /tmp/x4" 0 1 2 15
 

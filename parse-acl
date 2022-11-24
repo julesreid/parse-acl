@@ -712,7 +712,7 @@ class PrefixRangeAction(argparse.Action):
         """Set the PrefixLength argument"""
         assert isinstance(values, str)
         srcmatchlist: Collection[MatchType]
-        srcmatchlist = tuple(parse_prefix_list(prefix_list)
+        srcmatchlist = tuple(parse_prefix_list(prefix_list.strip())
                              for prefix_list in values.split(','))
         setattr(namespace, self.dest, srcmatchlist)
 
