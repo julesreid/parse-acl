@@ -481,6 +481,7 @@ OBJECT_NAT_RE = r'''
 # $1 = fully-qualified domain name (FQDN)
 HOSTNAME = r'(?:[a-zA-Z0-9_-]+\.)*[a-zA-Z0-9_-]+\.?'
 FQDN_RE = r'''
+    ^
     [ ]+
     fqdn[ ](?:v4[ ])?(''' + HOSTNAME + r''')
 '''
