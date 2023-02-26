@@ -9,6 +9,7 @@ network range.
 To do:
 
 • Test cases
+• Possibly use ntc-templates to get firewall configuration
 
 Copyright © 2022 J. Cowley
 
