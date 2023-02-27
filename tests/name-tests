@@ -1,0 +1,78 @@
+#!/bin/sh
+
+PARSEACL=../parse-acl
+
+echo -n Test 1...
+cat <<EOF > x-result-test
+name 10.1.2.3 Name_A
+object-group network Group_A
+ network-object host Name_A
+access-list outside_in permit ip object-group Group_A object-group Group_Z
+EOF
+$PARSEACL -s 10.1.2.3 name.txt  > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 2...
+cat <<EOF > x-result-test
+name 10.2.3.4 Name_B
+object-group network Group_B
+ network-object host Name_B
+access-list inside_in permit ip object-group Group_B object-group Group_Z
+EOF
+$PARSEACL -s 10.2.3.4 name.txt > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 3...
+cat <<EOF > x-result-test
+object-group network Group_A
+ network-object host 10.3.4.5
+access-list outside_in permit ip object-group Group_A object-group Group_Z
+EOF
+$PARSEACL -s 10.3.4.5 name.txt > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 4...
+cat <<EOF > x-result-test
+object-group network Group_B
+ network-object 10.4.5.6 255.255.255.255
+access-list inside_in permit ip object-group Group_B object-group Group_Z
+EOF
+$PARSEACL -s 10.4.5.6 name.txt > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 5...
+cat <<EOF > x-result-test
+name 192.168.1.2 Name_C
+object network Network_Object_A
+ host Name_C
+object-group network Group_A
+ network-object object Network_Object_A
+access-list outside_in permit ip object-group Group_A object-group Group_Z
+EOF
+$PARSEACL -s 192.168.1.2 name.txt > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+echo -n Test 6...
+cat <<EOF > x-result-test
+object network Network_Object_B
+ host 192.168.2.3
+object-group network Group_B
+ network-object object Network_Object_B
+access-list inside_in permit ip object-group Group_B object-group Group_Z
+EOF
+$PARSEACL -s 192.168.2.3 name.txt > y-result-test
+cmp x-result-test y-result-test || exit 1
+rm x-result-test y-result-test
+echo OK
+
+exit 0

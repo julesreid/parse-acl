@@ -173,14 +173,37 @@ KEYWORD_RE = r'''
     \b
 '''
 
+# $1 = IP address
+# $2 = object name
+NAME_RE = r'''
+    ^
+    [ ]*
+    name
+    [ ](''' + IP_ADDR + ''')
+    [ ](\S+)
+    (?:
+        [ ]description
+        [ ].*
+    )?
+    $
+'''
+
+# Only match objects names.  Since a symbolic name can appear after a
+# host keyword, we need to make sure it is not an IP address.  If it
+# is, it will be matched by SUBNET_RE or SUBNET_WITH_MASK_RE instead.
+#
 # $1 = object name
 NET_OR_GRP_OBJECT_RE = r'''
     ^
     [ ]*
     (?:
         group-object
-        |network-object[ ]object
-    )[ ]
+        |network-object[ ](?:
+                object[ ]
+                |host[ ](?!''' + IP_OCTET + ''')
+            )
+        |host[ ](?!''' + IP_OCTET + ''')
+    )
     (\S+)
 '''
 
@@ -924,6 +947,17 @@ def extended_asa_acl_re(re_match: Match[str],
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
     yield from handle_extended_acl(re_match, lastidx)
 
+def name_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
+    """Match the NAME_RE regex"""
+    logging.debug("got NAME_RE = %r", re_match.group(lastidx))
+    entire_line = re_match.group(lastidx + 0)
+    ip_address_str = re_match.group(lastidx + 1)
+    name = re_match.group(lastidx + 2)
+    yield MatchObj('header', (entire_line, name))
+    ip_address = IPv4Network(ip_address_str)
+    logging.debug("ip_address = %r", ip_address)
+    yield MatchObj('srcdst', SrcDst(ip_address, ANY))
+
 def net_or_grp_object_re(re_match: Match[str],
                          lastidx: int) -> Iterable[MatchObj]:
     """Match the NET_OR_GRP_OBJECT_RE regex"""
@@ -1132,6 +1166,7 @@ MATCH_RE_TABLE_RAW = {
     description_re: DESCRIPTION_RE,
     extended_acl_re: EXTENDED_ACL_RE,
     extended_asa_acl_re: EXTENDED_ASA_ACL_RE,
+    name_re: NAME_RE,
     net_or_grp_object_re: NET_OR_GRP_OBJECT_RE,
     standard_acl_re: STANDARD_ACL_RE,
     twice_nat_re: TWICE_NAT_RE,
@@ -1365,9 +1400,10 @@ def header_coroutine() -> HeaderType:
 
         # If the current line is no longer part of an ACL header
         # or object (or any other line that HEADER_RE may match),
-        # set the state variable to None.
+        # set the state variable to None.  A "name" statement is
+        # treated specially since it doesn't start with a space.
         logging.debug("line starts with space = %r", line.startswith(' '))
-        if not line.startswith(' '):
+        if not line.startswith(' ') and not line.startswith('name '):
             header_line = None
             yieldval = None
             continue
