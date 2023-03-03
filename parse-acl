@@ -179,7 +179,7 @@ NAME_RE = r'''
     ^
     [ ]*
     name
-    [ ](''' + IP_ADDR + ''')
+    [ ](''' + IP_ADDR + r''')
     [ ](\S+)
     (?:
         [ ]description
@@ -202,7 +202,7 @@ NET_OR_GRP_OBJECT_RE = r'''
                 object[ ]
                 |host[ ](?!''' + IP_OCTET + ''')
             )
-        |host[ ](?!''' + IP_OCTET + ''')
+        |host[ ](?!''' + IP_OCTET + r''')
     )
     (\S+)
 '''
