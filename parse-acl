@@ -197,7 +197,7 @@ NET_OR_GRP_OBJECT_RE = r'''
     ^
     [ ]*
     (?:
-        group-object
+        group-object[ ]
         |network-object[ ](?:
                 object[ ]
                 |host[ ](?!''' + IP_OCTET + ''')
