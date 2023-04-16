@@ -1367,7 +1367,7 @@ class ParserState:
 
 def header_coroutine() -> HeaderType:
     """Receive match objects and other data from parse_config(),
-    keep state, and return data about the headers to print."""
+    keep state, and yield the most recent header for a matching subnet."""
     header_line = None
     header_last = None
     yieldval = None
@@ -1426,7 +1426,7 @@ def header_coroutine() -> HeaderType:
 
 def remark_coroutine() -> RemarkType:
     """Receive match objects and other data from parse_config(),
-    keep state, and return data about remarks to print."""
+    keep state, and yield the most recent remark for a matching subnet."""
     current_remark_line = None
     yieldval = None
     while True:
@@ -1467,7 +1467,8 @@ def remark_coroutine() -> RemarkType:
 
 def aclname_coroutine() -> ACLNameType:
     """Receive match objects and other data from parse_config(),
-    keep state, and return data about the line where an ACL starts"""
+    keep state, and yield the line number of where an ACL starts.
+    This is used for the -a option to provide relative line numbers."""
     aclname = None
     aclname_last = None
     yieldval = None
@@ -1501,7 +1502,7 @@ def aclname_coroutine() -> ACLNameType:
 
 def objectnat_coroutine() -> ObjectNATType:
     """Receive match objects and other data from parse_config(), keep
-    state, and return data about the headers to print for NAT objects.
+    state, and yield the most recent header for a matching subnet.
     The matched parameter says that srcmatch matched one of the subnets
     from the original object, even though it doesn't appear anywhere
     in the NAT object of the same name."""
@@ -1530,7 +1531,8 @@ def objectnat_coroutine() -> ObjectNATType:
 
 def description_coroutine() -> DescriptionType:
     """Receive match objects and other data from parse_config(), keep
-    state, and return data about any matched "description" statement."""
+    keep state, and yield the line number of any matched "description"
+    statement."""
 
     description = None
     yieldval = None
@@ -1583,7 +1585,8 @@ def parser_matchobj(parser: ParserState, matchobj: MatchObj,
     to print lines based on the yielded results."""
 
     if args.objects or args.object:
-        # If not printing anything, only send the info to the state machines
+        # If not printing anything, send the info anyway to the state machines
+        # to gather object information
         logging.debug('continue through loop for more networks')
         parser.gen_send(matchobj, False, linenum, line)
         return False
