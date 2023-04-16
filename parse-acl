@@ -1304,13 +1304,13 @@ CoroutineSend = Tuple[ObjType, Object, bool, LineNum, Line]
 
 HeaderYield = Optional[Tuple[LineNum, Line]]
 RemarkYield = Optional[Tuple[LineNum, Line]]
-ACLNameYield = Optional[LineNum]
+ACLLineYield = Optional[LineNum]
 ObjectNATYield = Optional[Tuple[LineNum, Line]]
 DescriptionYield = Optional[Tuple[LineNum, Line]]
 
 HeaderType = Generator[HeaderYield, CoroutineSend, None]
 RemarkType = Generator[RemarkYield, CoroutineSend, None]
-ACLNameType = Generator[ACLNameYield, CoroutineSend, None]
+ACLLineType = Generator[ACLLineYield, CoroutineSend, None]
 ObjectNATType = Generator[ObjectNATYield, CoroutineSend, None]
 DescriptionType = Generator[DescriptionYield, CoroutineSend, None]
 
@@ -1339,28 +1339,28 @@ class ParserState:
         lines."""
         self._header_gen = header_coroutine()
         self._remark_gen = remark_coroutine()
-        self._aclname_gen = aclname_coroutine()
+        self._acl_linenum_gen = acl_linenum_coroutine()
         self._objectnat_gen = objectnat_coroutine()
         self._description_gen = description_coroutine()
         assert next(self._header_gen) is None
         assert next(self._remark_gen) is None
-        assert next(self._aclname_gen) is None
+        assert next(self._acl_linenum_gen) is None
         assert next(self._objectnat_gen) is None
         assert next(self._description_gen) is None
 
     def gen_send(self, matchobj: MatchObj, matched: bool, linenum: int,
-                 line: str) -> Tuple[HeaderYield, RemarkYield, ACLNameYield,
+                 line: str) -> Tuple[HeaderYield, RemarkYield, ACLLineYield,
                                      ObjectNATYield, DescriptionYield]:
         """Send the same match object and other data to the generator
         objects that are part of the parser state."""
         logging.debug("matchobj = %r, matched = %r, linenum = %r, line = %r",
                       matchobj, matched, linenum, line)
         send_arg = (matchobj.objtype, matchobj.obj, matched, linenum, line)
-        ret_seq: Tuple[Union[HeaderYield, RemarkYield, ACLNameYield,
+        ret_seq: Tuple[Union[HeaderYield, RemarkYield, ACLLineYield,
                              ObjectNATYield, DescriptionYield], ...]
         ret_seq = (self._header_gen.send(send_arg),)
         ret_seq += (self._remark_gen.send(send_arg),)
-        ret_seq += (self._aclname_gen.send(send_arg),)
+        ret_seq += (self._acl_linenum_gen.send(send_arg),)
         ret_seq += (self._objectnat_gen.send(send_arg),)
         ret_seq += (self._description_gen.send(send_arg),)
         return ret_seq
@@ -1465,7 +1465,7 @@ def remark_coroutine() -> RemarkType:
         # None of the criteria met, so reset everything
         yieldval = None
 
-def aclname_coroutine() -> ACLNameType:
+def acl_linenum_coroutine() -> ACLLineType:
     """Receive match objects and other data from parse_config(),
     keep state, and yield the line number of where an ACL starts.
     This is used for the -a option to provide relative line numbers."""
