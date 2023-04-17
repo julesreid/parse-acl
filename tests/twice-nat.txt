@@ -1,8 +1,14 @@
 object network InsideLocal
+ description RFC 1918
  host 10.1.2.3
+object network InsideGlobal
+ description TEST-NET-2
+ host 198.51.100.1
 object network OutsideLocal
+ description RFC 1918
  host 172.16.1.1
 object network OutsideGlobal
+ description TEST-NET-1
  host 192.0.2.3
 !
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal

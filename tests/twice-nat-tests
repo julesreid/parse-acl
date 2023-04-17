@@ -7,8 +7,9 @@ PARSEACL=../parse-acl
 echo -n Test 1...
 cat <<EOF > x-result-test
 object network InsideLocal
+ description RFC 1918
  host 10.1.2.3
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -s '10.0.0.0/8 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -26,8 +27,9 @@ echo OK
 echo -n Test 3...
 cat <<EOF > x-result-test
 object network InsideLocal
+ description RFC 1918
  host 10.1.2.3
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -p -s '10.0.0.0/8 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -37,6 +39,7 @@ echo OK
 echo -n Test 4...
 cat <<EOF > x-result-test
 object network OutsideLocal
+ description RFC 1918
  host 172.16.1.1
 EOF
 $PARSEACL -s '172.16.0.0/12 le 32' twice-nat.txt > y-result-test
@@ -46,7 +49,7 @@ echo OK
 
 echo -n Test 5...
 cat <<EOF > x-result-test
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -d '172.16.0.0/12 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -56,8 +59,9 @@ echo OK
 echo -n Test 6...
 cat <<EOF > x-result-test
 object network OutsideLocal
+ description RFC 1918
  host 172.16.1.1
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -p -s '172.16.0.0/12 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -66,8 +70,12 @@ echo OK
 
 echo -n Test 7...
 cat <<EOF > x-result-test
+object network InsideGlobal
+ description TEST-NET-2
+ host 198.51.100.1
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
-$PARSEACL -s '192.168.0.0/16 le 32' twice-nat.txt > y-result-test
+$PARSEACL -s '198.51.100.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
 rm x-result-test y-result-test
 echo OK
@@ -75,15 +83,19 @@ echo OK
 echo -n Test 8...
 cat <<EOF > x-result-test
 EOF
-$PARSEACL -d '192.168.0.0/16 le 32' twice-nat.txt > y-result-test
+$PARSEACL -d '198.51.100.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
 rm x-result-test y-result-test
 echo OK
 
 echo -n Test 9...
 cat <<EOF > x-result-test
+object network InsideGlobal
+ description TEST-NET-2
+ host 198.51.100.1
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
-$PARSEACL -p -s '192.168.0.0/16 le 32' twice-nat.txt > y-result-test
+$PARSEACL -p -s '198.51.100.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
 rm x-result-test y-result-test
 echo OK
@@ -91,6 +103,7 @@ echo OK
 echo -n Test 10...
 cat <<EOF > x-result-test
 object network OutsideGlobal
+ description TEST-NET-1
  host 192.0.2.3
 EOF
 $PARSEACL -s '192.0.2.0/24 le 32' twice-nat.txt > y-result-test
@@ -100,7 +113,7 @@ echo OK
 
 echo -n Test 11...
 cat <<EOF > x-result-test
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -d '192.0.2.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -110,8 +123,9 @@ echo OK
 echo -n Test 12...
 cat <<EOF > x-result-test
 object network OutsideGlobal
+ description TEST-NET-1
  host 192.0.2.3
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
 $PARSEACL -p -s '192.0.2.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -120,18 +134,18 @@ echo OK
 
 echo -n Test 13...
 cat <<EOF > x-result-test
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
-$PARSEACL -s 0.0.0.0/0 -d 192.0.2.3 twice-nat.txt > y-result-test
+$PARSEACL -s '198.51.100.0/24 le 32' -d '192.0.2.0/24 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
 rm x-result-test y-result-test
 echo OK
 
 echo -n Test 14...
 cat <<EOF > x-result-test
-nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
+nat (inside,outside) source static InsideLocal InsideGlobal destination static OutsideLocal OutsideGlobal
 EOF
-$PARSEACL -s 10.1.2.3 -d 172.16.1.1 twice-nat.txt > y-result-test
+$PARSEACL -s '10.0.0.0/8 le 32' -d '172.16.0.0/12 le 32' twice-nat.txt > y-result-test
 cmp x-result-test y-result-test || exit 1
 rm x-result-test y-result-test
 echo OK
