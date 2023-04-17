@@ -1,0 +1,8 @@
+object network InsideLocal
+ host 10.1.2.3
+object network OutsideLocal
+ host 172.16.1.1
+object network OutsideGlobal
+ host 192.0.2.3
+!
+nat (inside,outside) source static InsideLocal interface destination static OutsideLocal OutsideGlobal
