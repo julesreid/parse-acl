@@ -109,7 +109,8 @@ module.  The complete list is: `multicast`,
 ## Requirements
 
 - Python 3.8 or later
-- Bourne shell (to run tests)
+- bash shell (to run tests)
+- Internet access to DNS (for fqdn-tests)
 
 ## Examples
 
