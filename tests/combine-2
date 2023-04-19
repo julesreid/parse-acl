@@ -1,0 +1,60 @@
+object network SOURCE1
+ host 192.168.1.10
+object network SOURCE2
+ host 192.168.1.11
+object-group network DESTINATION1
+ network-object host 10.1.1.1
+object-group network DESTINATION2
+ network-object host 10.2.1.1
+object network REALSRC
+ network-object host 172.16.1.2
+object network MAPSRC
+ network-object host 192.0.2.100
+
+nat (SRCINTF,DSTINTF) source dynamic SOURCE1 SOURCE2
+nat (SRCINTF,DSTINTF) source dynamic SOURCE1 SOURCE2   destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source dynamic SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source dynamic SOURCE1 interface
+nat (SRCINTF,DSTINTF) source dynamic any SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source dynamic any SOURCE2 destination static DESTINATION1 DESTINATION2 description This is a description
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2   destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 inactive
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 no-proxy-arp
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2 no-proxy-arp
+nat (SRCINTF,DSTINTF) source static SOURCE1 SOURCE2 unidirectional no-proxy-arp
+nat (SRCINTF,DSTINTF) source static any SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) source static any any destination static DESTINATION1 DESTINATION2
+
+nat (SRCINTF,DSTINTF) after-auto source dynamic SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) after-auto source dynamic SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 service SERVICE1 SERVICE2
+nat (SRCINTF,DSTINTF) after-auto source dynamic any SOURCE2
+nat (SRCINTF,DSTINTF) after-auto source dynamic any SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) after-auto source dynamic any interface
+nat (SRCINTF,DSTINTF) after-auto source static SOURCE1 SOURCE2   destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) after-auto source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) after-auto source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 inactive
+nat (SRCINTF,DSTINTF) after-auto source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 no-proxy-arp
+nat (SRCINTF,DSTINTF) after-auto source static SOURCE1 SOURCE2 destination static DESTINATION1 DESTINATION2 unidirectional
+nat (SRCINTF,DSTINTF) after-auto source static any any   destination static DESTINATION1 DESTINATION2
+nat (SRCINTF,DSTINTF) after-auto source static any any destination static DESTINATION1 DESTINATION2
+
+nat (SRCINTF,DSTINTF) source static REALSRC MAPSRC inactive
+nat (SRCINTF,DSTINTF) source static REALSRC MAPSRC destination static MAPDST REALDST inactive
+nat (SRCINTF,DSTINTF) source static REALSRC MAPSRC destination static MAPDST REALDST net-to-net no-proxy-arp inactive
+nat (SRCINTF,DSTINTF) source static REALSRC REALSRC route-lookup
+nat (SRCINTF,DSTINTF) source dynamic REALSRC pat-pool interface destination static interface REALDST
+nat (SRCINTF,DSTINTF) source dynamic REALSRC pat-pool interface destination static MAPSRC REALSRC
+nat (SRCINTF,DSTINTF) source dynamic REALSRC pat-pool PATPOOL destination static MAPSRC REALSRC
+nat (SRCINTF,DSTINTF) source dynamic REALSRC MAPSRC
+nat (SRCINTF,DSTINTF) source dynamic REALSRC MAPSRC destination static MAPDST REALDST
+nat (SRCINTF,DSTINTF) source dynamic REALSRC MAPSRC destination static MAPDST any
+nat (SRCINTF,DSTINTF) source dynamic REALSRC MAPSRC destination static interface REALDST
+nat (SRCINTF,DSTINTF) source dynamic REALSRC MAPSRC destination static interface any
+nat (any,any) source static REALSRC MAPSRC
+
+nat (SRCINTF,DSTINTF) after-auto source dynamic any interface
+nat (SRCINTF,DSTINTF) after-auto source static any interface
+nat (any,DSTINTF) after-auto source dynamic any interface
+nat (any,DSTINTF) after-auto source static any interface
