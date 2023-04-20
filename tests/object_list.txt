@@ -1,0 +1,36 @@
+object-group network Branch_A
+ network-object host 10.1.1.1
+object-group network Branch_B
+ network-object host 10.2.1.1
+ network-object host 10.2.1.2
+object-group network Branch_C
+ network-object host 10.3.1.1
+ network-object host 10.3.1.2
+ network-object host 10.3.1.3
+object-group network Branches
+ group-object Branch_A
+ group-object Branch_B
+ group-object Branch_C
+object network Server_X
+ host 192.168.1.10
+object network Server_Y
+ host 192.168.1.11
+object network Server_Z
+ host 192.168.1.12
+object-group network Servers
+ network-object object Server_X
+ network-object object Server_Y
+ network-object object Server_Z
+object-group network All_Devices
+ group-object Branches
+ group-object Servers
+object-group network All_Internal
+ network-object 10.0.0.0 255.0.0.0
+ network-object 172.16.0.0 255.240.0.0
+ network-object 192.168.0.0 255.255.0.0
+object-group network All_Endpoints
+ group-object All_Internal
+object-group network Complete_Network
+ group-object Branches
+ group-object Servers
+ group-object All_Endpoints
