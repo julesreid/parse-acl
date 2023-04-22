@@ -101,7 +101,7 @@ etc.), the address 0.0.0.2/32 is substituted.
 A keyword represent classes of IP addresses such as global or private
 RFC 1918 addresses.  The keywords are based on attributes from the
 Python
-[ipaddress](https://docs.python.org/3/library/ipaddress.html#ipaddress.IPv4Address)
+[ipaddress](https://docs.python.org/3/library/ipaddress.html#module-ipaddress)
 module.  The complete list is: `multicast`,
 `private`, `global`, `unspecified`, `reserved`,
 `loopback`, and `link_local`.
