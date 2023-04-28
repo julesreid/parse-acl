@@ -1377,14 +1377,12 @@ def header_coroutine() -> HeaderType:
         objtype, obj, matched, linenum, line = (yield yieldval)
         if objtype == 'header':
             assert isinstance(obj, tuple)
-            # line_val is entire line, obj_val is object name
-            line_val, obj_val = obj
-            assert isinstance(line_val, str)
-            assert isinstance(obj_val, str)
-            logging.debug("found new header for network object")
-            header_line = line_val
-            header_obj = obj_val
+            assert isinstance(obj[0], str)
+            assert isinstance(obj[1], str)
+            # header_line is entire line, header_obj is object name
+            header_line, header_obj = obj
             header_linenum = linenum
+            logging.debug("found new header for network object")
             logging.debug("header_line = %r", header_line)
             logging.debug("header_obj = %r", header_obj)
             # Create the object in the dict
