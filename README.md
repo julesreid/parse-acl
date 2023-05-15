@@ -88,7 +88,7 @@ ranges separated by commas.  For example:
 
     parse-acl -p -s '172.16.0.0/12 le 32,192.0.2.20' FILE...
 
-This is equivalent to running `parse-acl` twice and merging the
+This is equivalent to running `parse-acl` multiple times and merging the
 results.
 
 DNS lookups for `fqdn` statements are disabled by default so
