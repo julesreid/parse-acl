@@ -14,6 +14,7 @@ echo -n Test 2...
 cat <<EOF > x-result-test
 object-group network net_object1
  network-object host 10.11.12.13
+ description bottom
 EOF
 $PARSEACL -s 10.11.12.13 description-1  > y-result-test
 cmp x-result-test y-result-test || exit 1
@@ -33,8 +34,12 @@ echo OK
 
 echo -n Test 4...
 cat <<EOF > x-result-test
+object-group network net_object0
+ description top
+ network-object host 10.11.12.12
 object-group network net_object1
  network-object host 10.11.12.13
+ description bottom
 object-group network net_object2
  description This should print
  network-object host 10.11.12.14
