@@ -1280,11 +1280,16 @@ def printline(linenum: int, acl_linenum: Optional[int],
         aclline = '%6d' % (linenum - acl_linenum + 1)
     print("%s\t%s" % (aclline, line))
 
+def check_isatty():
+    if sys.stdin.isatty():
+        print("warning: standard input is a tty -- use -h to see usage")
+
 def getfiledescs(filenames: Collection[str]) -> Iterable[Tuple[Optional[str],
                                                                TextIO]]:
     """Given a list of file names, return each one as an open file descriptor.
     If the list is empty, return stdin."""
     if len(filenames) == 0:
+        check_isatty()
         yield None, sys.stdin
         return
     for filename in filenames:
