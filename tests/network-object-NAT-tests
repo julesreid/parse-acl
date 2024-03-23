@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export LC_ALL=C
+
 PARSEACL=../parse-acl
 
 #trap "rm -f /tmp/x1 /tmp/x2 /tmp/x3 /tmp/x4" 0

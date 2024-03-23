@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export LC_ALL=C
+
 PARSEACL=../parse-acl
 
 echo -n Test 1...
