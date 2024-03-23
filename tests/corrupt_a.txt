@@ -1,4 +1,4 @@
-! Make a reference to an object which isn't defined (Branch_B)
+! Make a reference to an object which isn't defined (Branch_A)
 !object network Branch_A
 ! network-object host 10.1.1.1
 object network Branch_B
