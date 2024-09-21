@@ -1258,6 +1258,7 @@ SEEN_LINENUMS: Set[int] = set()
 def printline(linenum: int, acl_linenum: Optional[int],
               line: str, args: argparse.Namespace) -> None:
     """Print a line from the configuration"""
+    global SEEN_LINENUMS
 
     logging.debug("linenum = %r, acl_linenum = %r, line = %r",
                   linenum, acl_linenum, line)
@@ -1373,6 +1374,7 @@ class ParserState:
 def header_coroutine() -> HeaderType:
     """Receive match objects and other data from parse_config(),
     keep state, and yield the most recent header for a matching subnet."""
+    global OBJECT_DICT
     header_line = None
     header_last = None
     yieldval = None
@@ -1709,6 +1711,7 @@ def blockkey(block: AddrBlock) -> IPv4Network:
 def prepare_regexes(args: argparse.Namespace) -> Pattern[str]:
     """Prepare the MATCH_FUNCS and match_re regular expressions which
     are used by parse_args().  They only need to be compiled once."""
+    global MATCH_FUNCS
 
     # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
     for key in MATCH_RE_TABLE_RAW:
@@ -1726,6 +1729,8 @@ MATCH_FUNCS: Dict[str, Callable[[Match[str], int], Iterable[MatchObj]]] = {}
 
 def main() -> None:
     """Main routine"""
+    global OBJECT_DICT
+    global SEEN_LINENUMS
 
     args = getoptions()
 
