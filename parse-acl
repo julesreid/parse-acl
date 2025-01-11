@@ -586,9 +586,10 @@ def match_range(candidate_range: Range, prefix: MatchType) -> bool:
     logging.debug("match_start = %r, match_end = %r", match_start, match_end)
     assert candidate_start <= candidate_end
     # Rule out non-overlaps with the range
-    if candidate_start < match_start and candidate_end < match_start:
-        return False
-    if candidate_start > match_end:
+    if candidate_start < match_start:
+        if candidate_end < match_start:
+            return False
+    elif candidate_start > match_end:
         return False
     # What is left is an overlap
     return True
