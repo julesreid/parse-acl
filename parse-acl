@@ -1282,7 +1282,7 @@ def printline(linenum: int, acl_linenum: Optional[int],
         aclline = '%6d' % (linenum - acl_linenum + 1)
     print("%s\t%s" % (aclline, line))
 
-def check_isatty():
+def check_isatty() -> None:
     if sys.stdin.isatty():
         print("warning: standard input is a tty -- use -h to see usage")
 
