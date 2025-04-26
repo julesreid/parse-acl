@@ -617,7 +617,8 @@ def safe_IPv4Network(ipstr: str) -> IPv4Network:
     return net
 
 def range_to_net(re_range: str, re_host: Optional[str],
-                 re_net: str, re_mask: Optional[str]) -> IPv4Network:
+                 re_net: str, re_mask: Optional[str],
+                 wildcard: bool) -> IPv4Network:
     """Given the parts of a regex matching an ACL in the text,
     convert it to a subnet.  The regexes that are used in the matching
     are EXTENDED_ACL_RE, EXTENDED_ASA_ACL_RE, and STANDARD_ACL_RE."""
@@ -626,7 +627,12 @@ def range_to_net(re_range: str, re_host: Optional[str],
         net = re_host
     elif re_range in ("any", "any4") or re_range.startswith('interface '):
         net = '0.0.0.0/0'
-    elif re_mask is None:
+    elif re_mask is None or (wildcard and re_mask == '0.0.0.0'):
+        # The only problem with using IPv4Network here is that there is no
+        # way to specify that the mask used for this ACL is a wild card
+        # host mask, so IPv4Network('0.0.0.0/0.0.0.0') gets interpreted
+        # as IPv4Network('0.0.0.0/0') instead of IPv4Network('0.0.0.0/32').
+        # If wild cards are needed, get around this by removing the mask.
         net = re_net
     else:
         net = re_net + '/' + re_mask
@@ -885,7 +891,7 @@ def yield_single_subnet(subnet: IPv4Network) -> Iterable[AddrBlock]:
     yield subnet
 
 def handle_extended_acl(re_match: Match[str],
-                        lastidx: int) -> Iterable[MatchObj]:
+                        lastidx: int, wildcard: bool) -> Iterable[MatchObj]:
     """Extract values from the various formats for an extended ACL."""
 
     aclname = re_match.group(lastidx + 1)
@@ -901,7 +907,8 @@ def handle_extended_acl(re_match: Match[str],
         src = range_to_net(re_range=re_match.group(lastidx + 4),
                            re_host=re_match.group(lastidx + 5),
                            re_net=re_match.group(lastidx + 6),
-                           re_mask=re_match.group(lastidx + 7))
+                           re_mask=re_match.group(lastidx + 7),
+                           wildcard=wildcard)
         logging.debug("src = %r", src)
         srciter = yield_single_subnet(src)
 
@@ -924,7 +931,8 @@ def handle_extended_acl(re_match: Match[str],
         dst = range_to_net(re_range=re_match.group(lastidx + 10),
                            re_host=re_match.group(lastidx + 11),
                            re_net=re_match.group(lastidx + 12),
-                           re_mask=re_match.group(lastidx + 13))
+                           re_mask=re_match.group(lastidx + 13),
+                           wildcard=wildcard)
         logging.debug("dst = %r", dst)
         dstiter = yield_single_subnet(dst)
 
@@ -936,17 +944,13 @@ def handle_extended_acl(re_match: Match[str],
 def extended_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the EXTENDED_ACL_RE regex"""
     logging.debug("got EXTENDED_ACL_RE = %r", re_match.group(lastidx))
-    # The only problem with using IPv4Network here is that there is no
-    # way to specify that the mask used for this ACL is a wild card
-    # host mask, so IPv4Network('0.0.0.0/0.0.0.0') gets interpreted
-    # as IPv4Network('0.0.0.0/0') instead of IPv4Network('0.0.0.0/32').
-    yield from handle_extended_acl(re_match, lastidx)
+    yield from handle_extended_acl(re_match, lastidx, wildcard=True)
 
 def extended_asa_acl_re(re_match: Match[str],
                         lastidx: int) -> Iterable[MatchObj]:
     """Match the EXTENDED_ASA_ACL_RE regex"""
     logging.debug("got EXTENDED_ASA_ACL_RE = %r", re_match.group(lastidx))
-    yield from handle_extended_acl(re_match, lastidx)
+    yield from handle_extended_acl(re_match, lastidx, wildcard=False)
 
 def name_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     """Match the NAME_RE regex"""
@@ -992,7 +996,8 @@ def standard_acl_re(re_match: Match[str], lastidx: int) -> Iterable[MatchObj]:
     src = range_to_net(re_range=re_match.group(lastidx + 2),
                        re_host=re_match.group(lastidx + 3),
                        re_net=re_match.group(lastidx + 4),
-                       re_mask=re_match.group(lastidx + 5))
+                       re_mask=re_match.group(lastidx + 5),
+                       wildcard=True)
     logging.debug("src = %r", src)
     dst = ANY
     yield MatchObj('srcdst', SrcDst(src, dst))
