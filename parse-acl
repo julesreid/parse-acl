@@ -1264,6 +1264,7 @@ def printline(linenum: int, acl_linenum: Optional[int],
     logging.debug("linenum = %r, acl_linenum = %r, line = %r",
                   linenum, acl_linenum, line)
     if linenum in SEEN_LINENUMS:
+        logging.debug("duplicate line number %d", linenum)
         return
     SEEN_LINENUMS.add(linenum)
     assert isinstance(args.linenumber, bool)
