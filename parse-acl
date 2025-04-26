@@ -1399,21 +1399,22 @@ def header_coroutine() -> HeaderType:
             yieldval = None
             continue
 
-        if objtype not in ('srcdst', 'nat'):
-            yieldval = None
-            continue
-
-        assert isinstance(obj, SrcDst)
-
         # If the current line is no longer part of an ACL header
         # or object (or any other line that HEADER_RE may match),
         # set the state variable to None.  A "name" statement is
         # treated specially since it doesn't start with a space.
-        logging.debug("line starts with space = %r", line.startswith(' '))
         if not line.startswith(' ') and not line.startswith('name '):
+            logging.debug("line does not start with space")
             header_line = None
             yieldval = None
             continue
+
+        if objtype not in ('srcdst', 'nat'):
+            logging.debug("objtype not in (srcdst, nat)")
+            yieldval = None
+            continue
+
+        assert isinstance(obj, SrcDst)
 
         logging.debug('header_line = %r', header_line)
         # Do not include 'nat' subnets in the object
