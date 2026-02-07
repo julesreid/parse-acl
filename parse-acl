@@ -27,6 +27,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+# Version of parse-acl
+VERSION = '1.0'
+
 import sys
 import re
 from ipaddress import (IPv4Network as IPv4Network_orig, IPv4Address,
@@ -841,6 +844,7 @@ private                 Look for private RFC 1918 addresses
     parser.add_argument('configs',
                         nargs='*',
                         help='configuration file(s) to read')
+    parser.add_argument('--version', action='version', version=VERSION)
 
     args = parser.parse_args()
 
