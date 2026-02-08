@@ -98,7 +98,7 @@ is substituted instead of the actual IP address or addresses of the FQDN.
 If the resolver got an error (non-existent domain, server failure,
 etc.), the address 0.0.0.2/32 is substituted.
 
-A keyword represent classes of IP addresses such as global or private
+A keyword represents classes of IP addresses such as global or private
 RFC 1918 addresses.  The keywords are based on attributes from the
 Python
 [ipaddress](https://docs.python.org/3/library/ipaddress.html#module-ipaddress)
