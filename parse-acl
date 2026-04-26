@@ -861,7 +861,7 @@ private                 Look for private RFC 1918 addresses
 # uses this table to make two further tables for parsing.
 #
 MatchFunc = Callable[[Match[str], int], Iterator[MatchObj]]
-MATCH_RE_TABLE_RAW: Dict[MatchFunc, str] = {}
+MATCH_RE_TABLE: Dict[MatchFunc, str] = {}
 
 def registerregex(func: MatchFunc) -> MatchFunc:
     """Decorator to automatically register the functions that handle
@@ -869,14 +869,14 @@ def registerregex(func: MatchFunc) -> MatchFunc:
     name in upper case is used to find the definition of the string
     that defines the raw regular expression.  These are later used
     to compile further tables."""
-    global MATCH_RE_TABLE_RAW
+    global MATCH_RE_TABLE
 
     # Get the name of the decorated function
     name = func.__name__
     # Look up the value of the regex str with the same name in upper case
     regexstr = globals()[name.upper()]
     # Save this in the dictionary for later use
-    MATCH_RE_TABLE_RAW[func] = regexstr
+    MATCH_RE_TABLE[func] = regexstr
     # Decorators return a function.  In this case, we are not making
     # any modifications to it, only gathering information from it.
     return func
@@ -1268,18 +1268,18 @@ def find_regex(match_re: Pattern[str], line: str) -> Iterator[MatchObj]:
             return
 
 def compile_match_re() -> Pattern[str]:
-    """Process the MATCH_RE_TABLE_RAW into a regex used for matching.
+    """Process the MATCH_RE_TABLE into a regex used for matching.
     See the Python documentation for writing a tokenizer to see how
     this is put together.
 
     https://docs.python.org/3/library/re.html#writing-a-tokenizer
     """
 
-    # The function names and regexes from MATCH_RE_TABLE_RAW are
+    # The function names and regexes from MATCH_RE_TABLE are
     # converted into named groups and combined into a single, master
     # regular expression that combines all of the regular expressions.
     match_re_str = '|'.join('(?P<%s>%s)' % (re_func.__name__, re_value)
-                            for re_func, re_value in MATCH_RE_TABLE_RAW.items())
+                            for re_func, re_value in MATCH_RE_TABLE.items())
     match_re = re.compile(match_re_str, re.X)
     return match_re
 
@@ -1745,8 +1745,8 @@ def prepare_regexes(args: argparse.Namespace) -> Pattern[str]:
     are used by parse_args().  They only need to be compiled once."""
     global MATCH_FUNCS
 
-    # Convert MATCH_RE_TABLE_RAW to a mapping of regex group name to function
-    for key in MATCH_RE_TABLE_RAW:
+    # Convert MATCH_RE_TABLE to a mapping of regex group name to function
+    for key in MATCH_RE_TABLE:
         MATCH_FUNCS[key.__name__] = key
 
     # As a special case, replace the default FQDN parser if no -l option
