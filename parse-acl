@@ -298,6 +298,10 @@ STANDARD_ACL_RE = r'''
         access-list[ ](?:\d+|(\S+)[ ]standard)
     )?
     [ ]
+    (?:
+        \d+
+        [ ]
+    )?
     (?:permit|deny)[ ]+
     (
         any
@@ -340,6 +344,10 @@ EXTENDED_ACL_RE = r'''
     )?
     ()
     [ ]
+    (?:
+        \d+
+        [ ]
+    )?
     (?:permit|deny)[ ]+
     (\d+|ip|icmp|tcp|udp|ahp|eigrp|esp|gre|igmp|ipinip|nos|ospf|pcp|pim)
     ()
